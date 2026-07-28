@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Процедурные тайлы земли (SVG)</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: radial-gradient(ellipse 120% 80% at 50% 20%, #143d28 0%, #0a1f14 55%, #06120c 100%);
+      color: #c8e6d4;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+    body {
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin: 0 0 0.35rem;
+      letter-spacing: 0.02em;
+    }
+    .hint {
+      font-size: 0.8rem;
+      opacity: 0.75;
+      margin-bottom: 1rem;
+      text-align: center;
+      max-width: 42rem;
+    }
+    #field {
+      display: grid;
+      gap: 0;
+      border: 1px solid #2d5a40;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+      background: #0d2818;
+    }
+    .cell {
+      width: 64px;
+      height: 64px;
+      border-right: 1px solid rgba(45, 90, 64, 0.55);
+      border-bottom: 1px solid rgba(45, 90, 64, 0.55);
+      overflow: hidden;
+      position: relative;
+      margin: 0;
+      padding: 0;
+    }
+    .cell svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      vertical-align: top;
+    }
+  </style>
+</head>
+<body>
+  <h1>Игровое поле — случайные SVG-тайлы</h1>
+  <p class="hint">Размер сетки задан переменными <code>ROWS</code> и <code>COLS</code> в скрипте. Обновите страницу для новой генерации.</p>
+  <div id="field" aria-label="Игровое поле"></div>
+
+  <script>
+    (function () {
+      /** === Настройки сетки (меняйте здесь) === */
+      const ROWS = 9;
+      const COLS = 9;
+
+      /** Сид страницы — общий для всех ячеек в этой загрузке */
+      const PAGE_SEED = (Date.now() ^ (Math.random() * 0x100000000)) >>> 0;
+
+      function hash32(x) {
+        x = x >>> 0;
+        x ^= x >>> 16;
+        x = Math.imul(x, 0x7feb352d);
+        x ^= x >>> 15;
+        x = Math.imul(x, 0x846ca68b);
+        x ^= x >>> 16;
+        return x >>> 0;
+      }
+
+      /** Детерминированный RNG на клетку (r, c) + страница */
+      function rngForCell(row, col) {
+        let state = hash32(PAGE_SEED ^ hash32(row * 9973 + col * 104729));
+        return function () {
+          state = (state + 0x6d2b79f5) >>> 0;
+          let t = state;
+          t = Math.imul(t ^ (t >>> 15), t | 1);
+          t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function randBetween(rng, a, b) {
+        return a + (b - a) * rng();
+      }
+
+      function pick(rng, arr) {
+        return arr[Math.floor(rng() * arr.length)];
+      }
+
+      /** Случайная кривая «травинка»: квадратичная или кубическая Безье */
+      function grassBlade(rng) {
+        const x0 = randBetween(rng, 8, 92);
+        const tipX = x0 + randBetween(rng, -18, 18);
+        const tipY = randBetween(rng, 8, 42);
+        const cp1x = x0 + randBetween(rng, -12, 12);
+        const cp1y = randBetween(rng, 55, 95);
+        if (rng() < 0.5) {
+          return `M ${x0.toFixed(1)} 100 Q ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${tipX.toFixed(1)} ${tipY.toFixed(1)}`;
+        }
+        const cp2x = x0 + randBetween(rng, -20, 20);
+        const cp2y = randBetween(rng, 40, 78);
+        return `M ${x0.toFixed(1)} 100 C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${cp2x.toFixed(1)} ${cp2y.toFixed(1)} ${tipX.toFixed(1)} ${tipY.toFixed(1)}`;
+      }
+
+      /** Изящная трещина — ломаная с небольшими углами */
+      function crackPath(rng) {
+        const startSide = Math.floor(rng() * 4);
+        let x, y, dx, dy;
+        switch (startSide) {
+          case 0: x = randBetween(rng, 10, 90); y = 0; dx = randBetween(rng, -1, 1); dy = 1; break;
+          case 1: x = 100; y = randBetween(rng, 10, 90); dx = -1; dy = randBetween(rng, -0.6, 0.6); break;
+          case 2: x = randBetween(rng, 10, 90); y = 100; dx = randBetween(rng, -1, 1); dy = -1; break;
+          default: x = 0; y = randBetween(rng, 10, 90); dx = 1; dy = randBetween(rng, -0.6, 0.6);
+        }
+        const parts = [`M ${x.toFixed(1)} ${y.toFixed(1)}`];
+        let px = x;
+        let py = y;
+        const steps = 3 + Math.floor(rng() * 5);
+        const len = randBetween(rng, 18, 38);
+        for (let i = 0; i < steps; i++) {
+          px += dx * (len / steps) + randBetween(rng, -6, 6);
+          py += dy * (len / steps) + randBetween(rng, -6, 6);
+          px = Math.max(0, Math.min(100, px));
+          py = Math.max(0, Math.min(100, py));
+          parts.push(`L ${px.toFixed(1)} ${py.toFixed(1)}`);
+        }
+        return parts.join(' ');
+      }
+
+      /** Камень: округлый многоугольник */
+      function stonePath(rng, cx, cy, rBase) {
+        const points = [];
+        const n = 6 + Math.floor(rng() * 5);
+        for (let i = 0; i < n; i++) {
+          const ang = (i / n) * Math.PI * 2 + randBetween(rng, -0.15, 0.15);
+          const rv = rBase * randBetween(rng, 0.75, 1.1);
+          points.push([
+            (cx + Math.cos(ang) * rv).toFixed(1),
+            (cy + Math.sin(ang) * rv).toFixed(1),
+          ]);
+        }
+        return 'M ' + points.map((p) => p.join(',')).join(' L ') + ' Z';
+      }
+
+      /** «Сломанный» край — клип или наложение тёмного клина (упрощённо: многоугольник поверх) */
+      function brokenEdgeOverlay(rng) {
+        const edge = Math.floor(rng() * 4);
+        const deep = randBetween(rng, 8, 22);
+        const spread = randBetween(rng, 35, 75);
+        let d = '';
+        switch (edge) {
+          case 0:
+            d = `M 0 0 L ${spread} 0 L 0 ${deep} Z`;
+            break;
+          case 1:
+            d = `M 100 0 L 100 ${deep} L ${100 - spread} 0 Z`;
+            break;
+          case 2:
+            d = `M 100 100 L ${100 - spread} 100 L 100 ${100 - deep} Z`;
+            break;
+          default:
+            d = `M 0 100 L 0 ${100 - deep} L ${spread} 100 Z`;
+        }
+        const shade = `rgba(0,0,0,${randBetween(rng, 0.18, 0.38)})`;
+        return { d, shade };
+      }
+
+      function buildTileSvg(row, col) {
+        const rng = rngForCell(row, col);
+        const uid = 't' + row + '_' + col;
+
+        const isBrown = rng() < 0.14;
+        const hue = isBrown ? randBetween(rng, 22, 48) : randBetween(rng, 68, 128);
+        const sat = isBrown ? randBetween(rng, 28, 48) : randBetween(rng, 32, 62);
+        const light = randBetween(rng, 22, 42);
+        const base = `hsl(${hue.toFixed(1)} ${sat.toFixed(1)}% ${light.toFixed(1)}%)`;
+        const base2 = `hsl(${(hue + randBetween(rng, -8, 8)).toFixed(1)} ${(sat + randBetween(rng, -10, 10)).toFixed(1)}% ${(light + randBetween(rng, -6, 8)).toFixed(1)}%)`;
+
+        const noiseFreq = randBetween(rng, 0.35, 0.95);
+        const noiseOpacity = randBetween(rng, 0.14, 0.32);
+        const bladeCount = 4 + Math.floor(rng() * 14);
+
+        const hasStone = rng() < 0.36;
+        const hasCrack = rng() < 0.3;
+        const hasBrokenEdge = rng() < 0.22;
+        const bumpCount = 1 + Math.floor(rng() * 4);
+
+        let html = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none" width="100%" height="100%">`;
+        html += `<defs>`;
+        html += `<linearGradient id="${uid}g" x1="0%" y1="0%" x2="100%" y2="100%">`;
+        html += `<stop offset="0%" stop-color="${base2}"/>`;
+        html += `<stop offset="100%" stop-color="${base}"/>`;
+        html += `</linearGradient>`;
+        html += `<filter id="${uid}noise" x="-20%" y="-20%" width="140%" height="140%">`;
+        html += `<feTurbulence type="fractalNoise" baseFrequency="${noiseFreq.toFixed(3)}" numOctaves="2" seed="${(rng() * 999) | 0}" result="n"/>`;
+        html += `<feColorMatrix type="saturate" values="0" in="n" result="mono"/>`;
+        html += `<feBlend in="SourceGraphic" in2="mono" mode="multiply"/>`;
+        html += `</filter>`;
+        html += `</defs>`;
+
+        html += `<rect width="100" height="100" fill="url(#${uid}g)" />`;
+        html += `<rect width="100" height="100" fill="#000" filter="url(#${uid}noise)" opacity="${noiseOpacity.toFixed(2)}" style="mix-blend-mode: overlay;" />`;
+
+        /* травинки */
+        const bladeOpacity = randBetween(rng, 0.25, 0.55);
+        const bladeW = randBetween(rng, 0.35, 1.1);
+        for (let i = 0; i < bladeCount; i++) {
+          const gh = (hue + randBetween(rng, -15, 15)).toFixed(1);
+          const gs = randBetween(rng, 45, 75);
+          const gl = randBetween(rng, 28, 48);
+          html += `<path d="${grassBlade(rng)}" fill="none" stroke="hsl(${gh} ${gs}% ${gl}%)" stroke-width="${bladeW.toFixed(2)}" stroke-linecap="round" opacity="${bladeOpacity.toFixed(2)}" />`;
+        }
+
+        /* кочки / блики */
+        for (let i = 0; i < bumpCount; i++) {
+          const bx = randBetween(rng, 12, 88);
+          const by = randBetween(rng, 12, 88);
+          const rx = randBetween(rng, 4, 14);
+          const ry = randBetween(rng, 3, 11);
+          if (rng() < 0.55) {
+            html += `<ellipse cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="rgba(255,255,255,${randBetween(rng, 0.04, 0.12).toFixed(3)})" />`;
+          } else {
+            html += `<ellipse cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="rgba(0,0,0,${randBetween(rng, 0.06, 0.14).toFixed(3)})" />`;
+          }
+        }
+
+        if (hasStone) {
+          const scx = randBetween(rng, 22, 78);
+          const scy = randBetween(rng, 22, 78);
+          const sr = randBetween(rng, 6, 16);
+          const sHue = randBetween(rng, 0, 40);
+          const sSat = randBetween(rng, 3, 14);
+          const sLight = randBetween(rng, 38, 62);
+          const stoneFill = `hsl(${sHue.toFixed(1)} ${sSat.toFixed(1)}% ${sLight.toFixed(1)}%)`;
+          const stoneDark = `hsl(${sHue.toFixed(1)} ${sSat.toFixed(1)}% ${(sLight - 12).toFixed(1)}%)`;
+          html += `<path d="${stonePath(rng, scx, scy, sr)}" fill="${stoneFill}" stroke="${stoneDark}" stroke-width="0.6" stroke-linejoin="round" opacity="0.92" />`;
+          if (rng() < 0.55) {
+            const lx = scx + randBetween(rng, -sr * 0.4, sr * 0.4);
+            const ly = scy + randBetween(rng, -sr * 0.35, sr * 0.35);
+            const lr = randBetween(rng, 2, 5);
+            html += `<ellipse cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" rx="${lr.toFixed(1)}" ry="${(lr * 0.7).toFixed(1)}" fill="hsl(${randBetween(rng, 88, 108)} 35% 35%)" opacity="0.55" />`;
+            if (rng() < 0.5) {
+              const lx2 = scx + randBetween(rng, -sr * 0.5, sr * 0.5);
+              const ly2 = scy + randBetween(rng, -sr * 0.5, sr * 0.5);
+              html += `<ellipse cx="${lx2.toFixed(1)}" cy="${ly2.toFixed(1)}" rx="${(lr * 0.6).toFixed(1)}" ry="${(lr * 0.45).toFixed(1)}" fill="hsl(95 40% 42%)" opacity="0.35" />`;
+            }
+          }
+        }
+
+        if (hasCrack) {
+          html += `<path d="${crackPath(rng)}" fill="none" stroke="rgba(35,22,12,${randBetween(rng, 0.45, 0.75).toFixed(2)})" stroke-width="${randBetween(rng, 0.4, 0.9).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" />`;
+          if (rng() < 0.4) {
+            html += `<path d="${crackPath(rng)}" fill="none" stroke="rgba(20,14,8,0.35)" stroke-width="0.35" stroke-linecap="round" />`;
+          }
+        }
+
+        if (hasBrokenEdge) {
+          const be = brokenEdgeOverlay(rng);
+          html += `<path d="${be.d}" fill="${be.shade}" style="mix-blend-mode: multiply;" />`;
+        }
+
+        html += `</svg>`;
+        return html;
+      }
+
+      const field = document.getElementById('field');
+      field.style.gridTemplateColumns = `repeat(${COLS}, 64px)`;
+      field.style.gridTemplateRows = `repeat(${ROWS}, 64px)`;
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.innerHTML = buildTileSvg(r, c);
+          field.appendChild(cell);
+        }
+      }
+    })();
+  </script>
+</body>
+</html>
