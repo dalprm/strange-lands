@@ -1,0 +1,220 @@
+:root {
+  --fe-bg-deep: #1a1410;
+  --fe-bg-map: #243018;
+  --fe-panel: #2a2218;
+  --fe-panel-edge: #c9a227;
+  --fe-panel-inner: #3a2f22;
+  --fe-ink: #f3e6c8;
+  --fe-ink-muted: #c4b48a;
+  --fe-accent: #e8b84a;
+  --fe-accent-dim: #8a6a28;
+  --fe-danger: #c45c4a;
+  --fe-ok: #5a8f4a;
+  --fe-turn: #6eb5ff;
+  --fe-capture: #f0883e;
+  --fe-target: #d2a8ff;
+  --fe-selected: #ffe08a;
+  --fe-font-display: 'Cinzel', 'Palatino Linotype', serif;
+  --fe-font-body: 'Source Serif 4', 'Palatino Linotype', serif;
+  --fe-panel-width: 340px;
+  --fe-radius: 4px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 30% 20%, #3a2a18 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, #1e2814 0%, transparent 45%),
+    var(--fe-bg-deep);
+  color: var(--fe-ink);
+  font-family: var(--fe-font-body);
+  line-height: 1.45;
+}
+
+h1,
+h2,
+h3,
+.fe-title {
+  font-family: var(--fe-font-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+code {
+  font-size: 0.85em;
+  opacity: 0.9;
+}
+
+.fe-panel {
+  background:
+    linear-gradient(180deg, rgba(201, 162, 39, 0.12), transparent 28%),
+    var(--fe-panel);
+  border: 2px solid var(--fe-panel-edge);
+  border-radius: var(--fe-radius);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 12px 40px rgba(0, 0, 0, 0.45);
+  color: var(--fe-ink);
+}
+
+.fe-frame {
+  border: 1px solid var(--fe-accent-dim);
+  background: var(--fe-panel-inner);
+  border-radius: var(--fe-radius);
+  padding: 0.65rem 0.75rem;
+}
+
+.fe-btn {
+  font-family: var(--fe-font-display);
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--fe-radius);
+  border: 1px solid var(--fe-panel-edge);
+  background: linear-gradient(180deg, #5a4828, #3a2e18);
+  color: var(--fe-ink);
+  cursor: pointer;
+}
+
+.fe-btn:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.fe-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.fe-btn-primary {
+  background: linear-gradient(180deg, #7a5a20, #4a3810);
+  border-color: var(--fe-accent);
+}
+
+.fe-btn-ok {
+  background: linear-gradient(180deg, #3d6a35, #2a4a24);
+  border-color: #7cbc6a;
+}
+
+.fe-btn-danger {
+  background: linear-gradient(180deg, #6a3530, #3a2018);
+  border-color: var(--fe-danger);
+}
+
+.fe-input,
+.fe-select {
+  font-family: var(--fe-font-body);
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--fe-radius);
+  border: 1px solid var(--fe-accent-dim);
+  background: #1a1510;
+  color: var(--fe-ink);
+  font-size: 0.95rem;
+}
+
+.fe-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--fe-ink-muted);
+}
+
+.fe-error {
+  background: #3d1a1a;
+  color: #ffb4b4;
+  padding: 0.75rem 1rem;
+  border-radius: var(--fe-radius);
+  border: 1px solid var(--fe-danger);
+  overflow: auto;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.fe-muted {
+  color: var(--fe-ink-muted);
+  font-size: 0.82rem;
+}
+
+.fe-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(10, 6, 2, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.fe-modal {
+  width: 100%;
+  max-width: 440px;
+  max-height: min(90vh, 560px);
+  overflow-y: auto;
+  padding: 1.1rem 1.2rem;
+}
+
+.fe-menu {
+  position: fixed;
+  z-index: 1100;
+  min-width: 160px;
+  padding: 0.35rem;
+}
+
+.fe-menu button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  border-radius: var(--fe-radius);
+  background: transparent;
+  color: var(--fe-ink);
+  font: inherit;
+  font-size: 0.84rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fe-menu button:hover:not(:disabled) {
+  background: rgba(201, 162, 39, 0.2);
+}
+
+.fe-province-tile {
+  position: relative;
+  border: 2px solid var(--fe-accent-dim);
+  min-height: 76px;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+}
+
+.fe-province-tile.is-selected {
+  outline: 2px solid var(--fe-selected);
+  outline-offset: 1px;
+  z-index: 2;
+}
+
+.fe-tile-text {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.92),
+    0 0 8px rgba(0, 0, 0, 0.55);
+}

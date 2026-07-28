@@ -153,6 +153,23 @@ export function getMoveSourceLands(worldId: number, toLandId: number): Promise<L
   return fetchJson<LandDto[]>(`/api/worlds/${worldId}/lands/${toLandId}/move-sources`);
 }
 
+/** Постройка здания на земле. */
+export function buildBuilding(
+  worldId: number,
+  landId: number,
+  buildingType: string,
+  wallLevel?: number,
+): Promise<void> {
+  const body: Record<string, unknown> = { buildingType };
+  if (wallLevel != null) {
+    body.wallLevel = wallLevel;
+  }
+  return fetchJson<void>(`/api/worlds/${worldId}/lands/${landId}/build`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 /** Набор воинов на земле (один тип за запрос). */
 export function recruitWarriors(
   worldId: number,
