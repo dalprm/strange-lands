@@ -1,0 +1,34 @@
+*.class
+**/.metadata/
+**/.sonarlint/
+**/build/
+**/war/
+**/.gradle/
+**/bin/
+**/.settings/
+**/.idea/
+**/out/
+
+# IDE / editor
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*~
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Node / frontend
+**/node_modules/
+**/dist/
+*.tsbuildinfo
+
+# Logs / temp
+*.log
+*.tmp
+*.bak
