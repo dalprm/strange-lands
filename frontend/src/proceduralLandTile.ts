@@ -287,3 +287,158 @@ export function buildProceduralLandTileSvg(worldId: number, landId: number, terr
   parts.push(`</svg>`);
   return parts.join('');
 }
+
+const CELL = 100;
+
+export type Biome = 'swamp' | 'plains' | 'forest' | 'hills';
+
+/** tone из buildLandToneGrid ≈ 4..12 — суша доминирует (как Kenney sample). */
+export function biomeFromTone(terrainTone: number): Biome {
+  if (terrainTone <= 4) return 'swamp'; // редкая низменность / коричневое плато
+  if (terrainTone <= 7) return 'plains';
+  if (terrainTone <= 9) return 'forest';
+  return 'hills';
+}
+
+function biomeFill(biome: Biome, worldId: number, index: number, terrainTone: number): string {
+  const rng = rngForLand(worldId, index + 0x51ee);
+  const lightJ = randBetween(rng, -1.2, 1.2);
+  switch (biome) {
+    case 'swamp': {
+      const hue = 145 + randBetween(rng, -8, 10);
+      const light = Math.max(34, Math.min(48, 40 + (terrainTone - 5) * 1.5 + lightJ));
+      return `hsl(${hue.toFixed(1)} ${38 + rng() * 10}% ${light.toFixed(1)}%)`;
+    }
+    case 'plains': {
+      const hue = 92 + randBetween(rng, -6, 10);
+      const light = Math.max(48, Math.min(62, 54 + (terrainTone - 7) * 1.2 + lightJ));
+      return `hsl(${hue.toFixed(1)} ${46 + rng() * 12}% ${light.toFixed(1)}%)`;
+    }
+    case 'forest': {
+      const hue = 125 + randBetween(rng, -10, 8);
+      const light = Math.max(32, Math.min(46, 38 + (terrainTone - 9) * 1.2 + lightJ));
+      return `hsl(${hue.toFixed(1)} ${42 + rng() * 14}% ${light.toFixed(1)}%)`;
+    }
+    default: {
+      const hue = 42 + randBetween(rng, -8, 12);
+      const light = Math.max(44, Math.min(58, 50 + (terrainTone - 11) * 1.5 + lightJ));
+      return `hsl(${hue.toFixed(1)} ${34 + rng() * 14}% ${light.toFixed(1)}%)`;
+    }
+  }
+}
+
+/** Декор биома внутри клетки (локальные координаты 0..CELL). */
+function appendBiomeDecor(
+  parts: string[],
+  biome: Biome,
+  ox: number,
+  oy: number,
+  worldId: number,
+  index: number,
+): void {
+  const rng = rngForLand(worldId, index + 0xb10);
+  if (biome === 'plains') {
+    const n = 3 + Math.floor(rng() * 5);
+    for (let i = 0; i < n; i++) {
+      const x = ox + randBetween(rng, 8, 92);
+      const y = oy + randBetween(rng, 40, 95);
+      const tipX = x + randBetween(rng, -8, 8);
+      const tipY = y - randBetween(rng, 12, 28);
+      parts.push(
+        `<path d="M ${x.toFixed(1)} ${y.toFixed(1)} Q ${((x + tipX) / 2).toFixed(1)} ${((y + tipY) / 2).toFixed(1)} ${tipX.toFixed(1)} ${tipY.toFixed(1)}" fill="none" stroke="hsl(95 50% 38%)" stroke-width="0.7" stroke-linecap="round" opacity="0.4" />`,
+      );
+    }
+  } else if (biome === 'forest') {
+    const n = 4 + Math.floor(rng() * 5);
+    for (let i = 0; i < n; i++) {
+      const cx = ox + randBetween(rng, 12, 88);
+      const cy = oy + randBetween(rng, 14, 78);
+      const r = randBetween(rng, 7, 16);
+      parts.push(
+        `<ellipse cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r * 0.78).toFixed(1)}" fill="hsl(130 38% 28%)" opacity="0.55" />`,
+      );
+      parts.push(
+        `<ellipse cx="${(cx - r * 0.15).toFixed(1)}" cy="${(cy - r * 0.2).toFixed(1)}" rx="${(r * 0.35).toFixed(1)}" ry="${(r * 0.28).toFixed(1)}" fill="hsl(125 35% 40%)" opacity="0.35" />`,
+      );
+    }
+  } else if (biome === 'hills') {
+    const n = 2 + Math.floor(rng() * 3);
+    for (let i = 0; i < n; i++) {
+      const x0 = ox + randBetween(rng, 5, 40);
+      const x1 = x0 + randBetween(rng, 35, 55);
+      const y = oy + randBetween(rng, 35, 85);
+      const peak = y - randBetween(rng, 18, 36);
+      const mid = (x0 + x1) / 2;
+      parts.push(
+        `<path d="M ${x0.toFixed(1)} ${y.toFixed(1)} Q ${mid.toFixed(1)} ${peak.toFixed(1)} ${x1.toFixed(1)} ${y.toFixed(1)}" fill="hsl(38 28% 42%)" opacity="0.45" />`,
+      );
+    }
+    const stones = 2 + Math.floor(rng() * 3);
+    for (let i = 0; i < stones; i++) {
+      const sx = ox + randBetween(rng, 10, 90);
+      const sy = oy + randBetween(rng, 20, 90);
+      const sr = randBetween(rng, 2.5, 5.5);
+      parts.push(
+        `<ellipse cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" rx="${sr.toFixed(1)}" ry="${(sr * 0.7).toFixed(1)}" fill="hsl(30 12% 52%)" opacity="0.7" />`,
+      );
+    }
+  } else {
+    // swamp: reeds + dark pools
+    const pools = 1 + Math.floor(rng() * 2);
+    for (let i = 0; i < pools; i++) {
+      const cx = ox + randBetween(rng, 20, 80);
+      const cy = oy + randBetween(rng, 25, 80);
+      parts.push(
+        `<ellipse cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" rx="${randBetween(rng, 10, 22).toFixed(1)}" ry="${randBetween(rng, 6, 12).toFixed(1)}" fill="hsl(195 25% 28%)" opacity="0.35" />`,
+      );
+    }
+    const reeds = 4 + Math.floor(rng() * 6);
+    for (let i = 0; i < reeds; i++) {
+      const x = ox + randBetween(rng, 8, 92);
+      const y = oy + randBetween(rng, 50, 95);
+      parts.push(
+        `<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(x + randBetween(rng, -3, 3)).toFixed(1)}" y2="${(y - randBetween(rng, 10, 22)).toFixed(1)}" stroke="hsl(85 35% 32%)" stroke-width="0.85" opacity="0.55" />`,
+      );
+    }
+  }
+}
+
+/**
+ * Один SVG ландшафта на весь мир: биомы по tone, стык клеток, мягкий единый haze.
+ */
+export function buildWorldMapSvg(worldId: number, rows: number, cols: number): string {
+  const tones = buildLandToneGrid(worldId, rows, cols);
+  const w = cols * CELL;
+  const h = rows * CELL;
+  const uid = `wm${worldId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  const parts: string[] = [];
+  parts.push(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" width="100%" height="100%">`,
+  );
+  parts.push(`<defs>`);
+  parts.push(
+    `<filter id="${uid}haze" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.032" numOctaves="2" seed="${worldId & 0xffff}" result="n"/><feColorMatrix type="saturate" values="0.35" in="n" result="t"/><feComponentTransfer in="t" result="soft"><feFuncA type="linear" slope="0.12"/></feComponentTransfer></filter>`,
+  );
+  parts.push(`</defs>`);
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      const tone = tones[i] ?? 8;
+      const biome = biomeFromTone(tone);
+      const fill = biomeFill(biome, worldId, i, tone);
+      const x = c * CELL;
+      const y = r * CELL;
+      parts.push(`<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}" fill="${fill}" />`);
+      appendBiomeDecor(parts, biome, x, y, worldId, i);
+    }
+  }
+
+  parts.push(
+    `<rect x="0" y="0" width="${w}" height="${h}" fill="#c8b88a" filter="url(#${uid}haze)" opacity="0.25" style="mix-blend-mode:soft-light" />`,
+  );
+
+  parts.push(`</svg>`);
+  return parts.join('');
+}

@@ -193,10 +193,119 @@ code {
   background: rgba(201, 162, 39, 0.2);
 }
 
+.fe-tooltip {
+  position: fixed;
+  z-index: 1200;
+  max-width: 240px;
+  padding: 0.55rem 0.7rem;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(201, 162, 39, 0.16), transparent 40%),
+    var(--fe-panel);
+  border: 1px solid var(--fe-panel-edge);
+  border-radius: var(--fe-radius);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 8px 24px rgba(0, 0, 0, 0.55);
+  color: var(--fe-ink);
+  font-family: var(--fe-font-body);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.fe-tooltip-title {
+  font-family: var(--fe-font-display);
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+  color: var(--fe-accent);
+  margin-bottom: 0.3rem;
+}
+
+.fe-tooltip-line {
+  color: var(--fe-ink-muted);
+}
+
+.fe-tooltip-line strong {
+  color: var(--fe-ink);
+  font-weight: 600;
+}
+
+.fe-map-island {
+  position: relative;
+  width: 100%;
+  background-color: #8fd3f4;
+  background-size: 64px 64px;
+  background-repeat: repeat;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(40, 70, 90, 0.15);
+}
+
+.fe-map-frame-cell {
+  min-width: 0;
+  min-height: 0;
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+.fe-map-playfield {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+.fe-map-terrain,
+.fe-map-decor,
+.fe-map-provinces {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.fe-map-terrain {
+  z-index: 0;
+  pointer-events: none;
+}
+
+.fe-map-terrain-cell {
+  min-width: 0;
+  min-height: 0;
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.fe-map-decor {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.fe-map-decor-item {
+  min-width: 0;
+  min-height: 0;
+  background-size: contain;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+.fe-map-provinces {
+  z-index: 2;
+}
+
 .fe-province-tile {
   position: relative;
-  border: 2px solid var(--fe-accent-dim);
-  min-height: 76px;
+  border-style: solid;
+  border-color: rgba(201, 162, 39, 0.35);
+  min-height: 0;
   overflow: hidden;
   padding: 0;
   margin: 0;
@@ -205,12 +314,14 @@ code {
   color: inherit;
   text-align: left;
   background: transparent;
+  border-radius: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
 .fe-province-tile.is-selected {
   outline: 2px solid var(--fe-selected);
-  outline-offset: 1px;
-  z-index: 2;
+  outline-offset: -2px;
+  z-index: 3;
 }
 
 .fe-tile-text {

@@ -27,6 +27,7 @@ Desktop.ini
 **/node_modules/
 **/dist/
 *.tsbuildinfo
+frontend/tmp-assets/
 
 # Logs / temp
 *.log

@@ -76,25 +76,28 @@ export function BarrackGlyphTileWithCount({ count, size }: { count: number; size
 export function FogOfWarOverlay({ worldId, landId }: { worldId: number; landId: number }) {
   const uid = `fogW${worldId}L${landId}`;
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none" width="100%" height="100%" aria-hidden style={{ display: 'block' }}>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      width="100%"
+      height="100%"
+      aria-hidden
+      style={{ display: 'block' }}
+    >
       <defs>
-        <filter id={`${uid}-noise`} x="0%" y="0%" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="3" result="noise" />
-          <feColorMatrix in="noise" type="saturate" values="0" result="grayNoise" />
-          <feComponentTransfer in="grayNoise" result="softNoise">
-            <feFuncA type="linear" slope={0.3} />
-          </feComponentTransfer>
+        <filter id={`${uid}-haze`} x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.028" numOctaves="2" seed={(worldId * 17 + landId) & 0xffff} result="n" />
+          <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.85  0 0 0 0 0.82  0 0 0 0 0.72  0 0 0 0.45 0" result="mist" />
         </filter>
-        <radialGradient id={`${uid}-grad`} cx="50%" cy="50%" r="70%">
-          <stop offset="0%" stopColor="rgb(30, 24, 16)" stopOpacity={0.4} />
-          <stop offset="100%" stopColor="rgb(0, 0, 0)" stopOpacity={0.85} />
+        <radialGradient id={`${uid}-veil`} cx="50%" cy="45%" r="75%">
+          <stop offset="0%" stopColor="rgb(210, 200, 170)" stopOpacity={0.12} />
+          <stop offset="55%" stopColor="rgb(160, 150, 120)" stopOpacity={0.28} />
+          <stop offset="100%" stopColor="rgb(90, 80, 55)" stopOpacity={0.42} />
         </radialGradient>
       </defs>
-      <rect x="0" y="0" width="100" height="100" fill={`url(#${uid}-grad)`} />
-      <rect x="0" y="0" width="100" height="100" fill="rgba(0,0,0,0.5)" filter={`url(#${uid}-noise)`} />
-      <text x="50" y="55" fontFamily="Cinzel, serif" fontSize="22" fill="rgba(243,230,200,0.45)" textAnchor="middle" dominantBaseline="middle" fontWeight="bold">
-        ?
-      </text>
+      <rect x="0" y="0" width="100" height="100" fill={`url(#${uid}-veil)`} />
+      <rect x="0" y="0" width="100" height="100" filter={`url(#${uid}-haze)`} opacity={0.55} style={{ mixBlendMode: 'soft-light' }} />
     </svg>
   );
 }

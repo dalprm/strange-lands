@@ -14,8 +14,12 @@ import {
   warriorRowKey,
   warriorTypeLabel,
 } from '../land/helpers';
-import { provinceClipPath } from '../land/provinceClip';
-import { buildLandToneGrid, buildProceduralLandTileSvg } from '../proceduralLandTile';
+import {
+  MAP_FRAME_TILES,
+  SUBTILE,
+  buildDecorLayout,
+  buildTerrainLayout,
+} from '../land/terrainTiles';
 import { BarrackGlyphTileWithCount, CastleGlyph, FogOfWarOverlay, WallGlyph } from './icons';
 
 type MapTileViewMode = 'economy' | 'buildings';
@@ -44,6 +48,13 @@ type LandContextMenuState = {
 
 type CaptureMoveState = { targetId: number; sourceIds: number[] };
 
+type LandHoverTooltip = {
+  x: number;
+  y: number;
+  title: string;
+  lines: string[];
+};
+
 export function ProvinceMap({
   world,
   currentPlayerId,
@@ -71,24 +82,27 @@ export function ProvinceMap({
   const [moveCounts, setMoveCounts] = useState<Record<string, number>>({});
   const [moveSubmitting, setMoveSubmitting] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [hoverTooltip, setHoverTooltip] = useState<LandHoverTooltip | null>(null);
 
   const fogVisibleLandIds = useMemo(() => {
     if (world == null || !world.lands?.length || currentPlayerId == null) return null;
     return computeFogOfWarVisibleLandIds(world.lands, world.neighbors, currentPlayerId);
   }, [world, currentPlayerId]);
 
-  const tileByLandId = useMemo(() => {
-    if (world == null || !world.lands?.length || world.size == null) return new Map<number, string>();
-    const r = world.size.width;
-    const c = world.size.height;
-    const wid = world.id;
-    const tones = buildLandToneGrid(wid, r, c);
-    const m = new Map<number, string>();
-    world.lands.forEach((land, index) => {
-      const t = tones[index] ?? 8;
-      m.set(land.id, buildProceduralLandTileSvg(wid, land.id, t));
-    });
-    return m;
+  const terrainPack = useMemo(() => {
+    if (world == null || world.size == null) {
+      return { cells: [], hRows: 0, hCols: 0, decor: [] as ReturnType<typeof buildDecorLayout> };
+    }
+    const layout = buildTerrainLayout(world.id, world.size.width, world.size.height);
+    const decor = buildDecorLayout(
+      world.id,
+      world.size.width,
+      world.size.height,
+      layout.cells,
+      layout.hRows,
+      layout.hCols,
+    );
+    return { ...layout, decor };
   }, [world]);
 
   useEffect(() => {
@@ -102,6 +116,7 @@ export function ProvinceMap({
     setCaptureInitError(null);
     setMoveWarriorsModal(null);
     setMoveError(null);
+    setHoverTooltip(null);
   }, [world?.id]);
 
   useEffect(() => {
@@ -398,134 +413,280 @@ export function ProvinceMap({
         }}
       >
         <div
+          className="fe-map-island"
           style={{
+            maxWidth: `min(${cols * 96}px, 100%)`,
+            aspectRatio: `${cols} / ${rows}`,
+            backgroundImage: `url(${MAP_FRAME_TILES.water})`,
             display: 'grid',
-            gridTemplateColumns: `repeat(${cols}, minmax(72px, 1fr))`,
-            gap: 6,
-            maxWidth: `min(${cols * 100 + (cols - 1) * 6}px, 100%)`,
+            // Тонкая рамка в px — не fr, иначе края больше поля
+            gridTemplateColumns: '28px 1fr 28px',
+            gridTemplateRows: '28px 1fr 36px',
+            gap: 0,
+            width: '100%',
           }}
         >
-          {lands.map((land) => {
-            const pid = land.player?.id ?? null;
-            const isCurrentTurn = currentPlayerId != null && pid === currentPlayerId;
-            const isSelected = selectedLandId === land.id;
-            const svg = tileByLandId.get(land.id) ?? '';
-            const isFogged = fogVisibleLandIds != null && !fogVisibleLandIds.has(land.id);
-            const clip = provinceClipPath(land.id);
-            let borderColor = isFogged
-              ? '#4a4030'
-              : isCurrentTurn
-                ? 'var(--fe-turn)'
-                : pid != null
-                  ? playerLandBackgroundFromId(pid)
-                  : 'var(--fe-accent-dim)';
-            let borderWidth = isFogged ? 1 : pid != null || isCurrentTurn ? 2 : 1;
-            const isCaptureSource = captureMove != null && captureMove.sourceIds.includes(land.id);
-            const isCaptureTarget = captureMove != null && land.id === captureMove.targetId;
-            if (captureMove != null) {
-              if (isCaptureSource) {
-                borderWidth = 3;
-                borderColor = 'var(--fe-capture)';
-              } else if (isCaptureTarget) {
-                borderWidth = 3;
-                borderColor = 'var(--fe-target)';
-              }
-            }
-            const ownerLabel = landOwnerLabel(land);
-            const recruitTypesLocal = land.accessBuildWarriorTypes ?? [];
-            const recruitText =
-              recruitTypesLocal.length > 0 ? recruitTypesLocal.map(warriorTypeLabel).join(', ') : 'нет';
-            const hasCastle = landHasCastle(land.buildings);
-            const hasWall = landHasWall(land.buildings);
-            const barrackCount = landBarrackCount(land.buildings);
+          <div aria-hidden className="fe-map-frame-cell" style={{ backgroundImage: `url(${MAP_FRAME_TILES.tl})` }} />
+          <div
+            aria-hidden
+            className="fe-map-frame-cell"
+            style={{
+              backgroundImage: `url(${MAP_FRAME_TILES.t})`,
+              backgroundRepeat: 'repeat-x',
+              backgroundSize: 'auto 100%',
+            }}
+          />
+          <div aria-hidden className="fe-map-frame-cell" style={{ backgroundImage: `url(${MAP_FRAME_TILES.tr})` }} />
 
-            return (
-              <button
-                key={land.id}
-                type="button"
-                className={`fe-province-tile${isSelected ? ' is-selected' : ''}`}
-                style={{
-                  borderWidth,
-                  borderColor,
-                  clipPath: clip,
-                  WebkitClipPath: clip,
-                }}
-                title={isFogged ? 'Туман войны' : `#${land.id} · ${ownerLabel ?? 'нейтрал'}`}
-                onClick={() => handleLandTileClick(land, isFogged)}
-                onContextMenu={(e) => handleLandContextMenu(e, land, isFogged)}
-              >
+          <div
+            aria-hidden
+            className="fe-map-frame-cell"
+            style={{
+              backgroundImage: `url(${MAP_FRAME_TILES.l})`,
+              backgroundRepeat: 'repeat-y',
+              backgroundSize: '100% auto',
+            }}
+          />
+
+          <div className="fe-map-playfield">
+            <div
+              aria-hidden
+              className="fe-map-terrain"
+              style={{
+                gridTemplateColumns: `repeat(${terrainPack.hCols || cols * SUBTILE}, 1fr)`,
+                gridTemplateRows: `repeat(${terrainPack.hRows || rows * SUBTILE}, 1fr)`,
+              }}
+            >
+              {terrainPack.cells.map((cell, i) => (
                 <div
-                  aria-hidden
-                  style={{ position: 'absolute', inset: 0, zIndex: 0 }}
-                  dangerouslySetInnerHTML={{ __html: svg }}
-                />
-                <div
+                  key={`t-${i}`}
+                  className="fe-map-terrain-cell"
                   style={{
-                    position: 'absolute',
-                    inset: 0,
-                    zIndex: 1,
-                    pointerEvents: 'none',
-                    ...(isFogged || pid == null
-                      ? { background: 'rgba(15, 12, 8, 0.65)' }
-                      : {
-                          background: playerLandBackgroundFromId(pid),
-                          opacity: 0.38,
-                          mixBlendMode: 'multiply',
-                        }),
+                    backgroundColor: '#2ec973',
+                    backgroundImage:
+                      cell.underlayUrl != null
+                        ? `url(${cell.tileUrl}), url(${cell.underlayUrl})`
+                        : `url(${cell.tileUrl})`,
+                    backgroundSize: cell.underlayUrl != null ? '100% 100%, 100% 100%' : '100% 100%',
                   }}
                 />
-                <div
-                  style={{
-                    position: 'relative',
-                    zIndex: 2,
-                    padding: '0.3rem',
-                    fontSize: '0.66rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: mapViewMode === 'economy' ? 'center' : 'flex-start',
-                    gap: '0.15rem',
-                    minHeight: 72,
-                  }}
-                >
-                  {!isFogged &&
-                    (mapViewMode === 'economy' ? (
-                      <>
-                        <span className="fe-tile-text">
-                          <strong>{ownerLabel ?? '—'}</strong>
-                        </span>
-                        <span className="fe-tile-text">
-                          Доход <strong>{land.costs ?? '—'}</strong>
-                        </span>
-                        <span className="fe-tile-text" style={{ fontSize: '0.58rem' }}>
-                          Найм {recruitText}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="fe-tile-text">
-                          <strong>{ownerLabel ?? '—'}</strong>
-                        </span>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                          {hasCastle && <CastleGlyph size={24} tile />}
-                          {barrackCount > 0 && <BarrackGlyphTileWithCount count={barrackCount} size={24} />}
-                          {hasWall && <WallGlyph size={24} tile />}
+              ))}
+            </div>
+
+            <div
+              aria-hidden
+              className="fe-map-decor"
+              style={{
+                gridTemplateColumns: `repeat(${terrainPack.hCols || cols * SUBTILE}, 1fr)`,
+                gridTemplateRows: `repeat(${terrainPack.hRows || rows * SUBTILE}, 1fr)`,
+              }}
+            >
+              {terrainPack.decor.map((d) => {
+                const r = Math.floor(d.index / (terrainPack.hCols || 1));
+                const c = d.index % (terrainPack.hCols || 1);
+                return (
+                  <div
+                    key={`d-${d.index}-${d.kind}`}
+                    className="fe-map-decor-item"
+                    style={{
+                      gridColumn: c + 1,
+                      gridRow: r + 1,
+                      backgroundImage: `url(${d.url})`,
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            <div
+              className="fe-map-provinces"
+              style={{
+                gridTemplateColumns: `repeat(${cols}, 1fr)`,
+                gridTemplateRows: `repeat(${rows}, 1fr)`,
+              }}
+            >
+              {lands.map((land, landIndex) => {
+                const pid = land.player?.id ?? null;
+                const isCurrentTurn = currentPlayerId != null && pid === currentPlayerId;
+                const isSelected = selectedLandId === land.id;
+                const isFogged = fogVisibleLandIds != null && !fogVisibleLandIds.has(land.id);
+                let borderColor = isFogged
+                  ? 'rgba(40, 32, 20, 0.55)'
+                  : isCurrentTurn
+                    ? 'var(--fe-turn)'
+                    : pid != null
+                      ? playerLandBackgroundFromId(pid)
+                      : 'rgba(201, 162, 39, 0.28)';
+                let borderWidth = isFogged ? 1 : isCurrentTurn || pid != null ? 2 : 1;
+                const isCaptureSource = captureMove != null && captureMove.sourceIds.includes(land.id);
+                const isCaptureTarget = captureMove != null && land.id === captureMove.targetId;
+                if (captureMove != null) {
+                  if (isCaptureSource) {
+                    borderWidth = 3;
+                    borderColor = 'var(--fe-capture)';
+                  } else if (isCaptureTarget) {
+                    borderWidth = 3;
+                    borderColor = 'var(--fe-target)';
+                  }
+                }
+                const ownerLabel = landOwnerLabel(land);
+                const recruitTypesLocal = land.accessBuildWarriorTypes ?? [];
+                const recruitText =
+                  recruitTypesLocal.length > 0 ? recruitTypesLocal.map(warriorTypeLabel).join(', ') : 'нет';
+                const hasCastle = landHasCastle(land.buildings);
+                const hasWall = landHasWall(land.buildings);
+                const barrackCount = landBarrackCount(land.buildings);
+
+                const pr = Math.floor(landIndex / cols);
+                const pc = landIndex % cols;
+                const sampleTerrain =
+                  terrainPack.cells[
+                    (pr * SUBTILE + 1) * (terrainPack.hCols || cols * SUBTILE) + (pc * SUBTILE + 1)
+                  ];
+                const biomeLabel: Record<string, string> = {
+                  plains: 'равнины',
+                  forest: 'лес',
+                  hills: 'холмы',
+                  swamp: 'низменность',
+                };
+                const buildingBits: string[] = [];
+                if (hasCastle) buildingBits.push('замок');
+                if (barrackCount > 0) buildingBits.push(`казармы ×${barrackCount}`);
+                if (hasWall) buildingBits.push('стена');
+                const tipTitle = isFogged
+                  ? 'Туман войны'
+                  : `#${land.id} · ${ownerLabel ?? 'нейтрал'}`;
+                const tipLines = isFogged
+                  ? []
+                  : [
+                      `Доход ${land.costs ?? '—'}`,
+                      `Найм: ${recruitText}`,
+                      buildingBits.length > 0 ? `Здания: ${buildingBits.join(', ')}` : null,
+                      sampleTerrain != null
+                        ? `Местность: ${biomeLabel[sampleTerrain.biome] ?? sampleTerrain.biome}`
+                        : null,
+                    ].filter((x): x is string => x != null);
+
+                const showTip = (e: ReactMouseEvent) => {
+                  if (landContextMenu != null) return;
+                  const pad = 12;
+                  const x = Math.min(e.clientX + pad, window.innerWidth - 260);
+                  const y = Math.min(e.clientY + pad, window.innerHeight - 140);
+                  setHoverTooltip({ x, y, title: tipTitle, lines: tipLines });
+                };
+
+                return (
+                  <button
+                    key={land.id}
+                    type="button"
+                    className={`fe-province-tile${isSelected ? ' is-selected' : ''}`}
+                    style={{
+                      borderWidth,
+                      borderColor,
+                      background: 'transparent',
+                      minHeight: 0,
+                      borderRadius: 0,
+                    }}
+                    onClick={() => handleLandTileClick(land, isFogged)}
+                    onContextMenu={(e) => {
+                      setHoverTooltip(null);
+                      handleLandContextMenu(e, land, isFogged);
+                    }}
+                    onMouseEnter={showTip}
+                    onMouseMove={showTip}
+                    onMouseLeave={() => setHoverTooltip(null)}
+                  >
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        zIndex: 1,
+                        pointerEvents: 'none',
+                        ...(isFogged
+                          ? { background: 'rgba(180, 170, 140, 0.22)' }
+                          : pid != null
+                            ? {
+                                background: playerLandBackgroundFromId(pid),
+                                opacity: 0.22,
+                                mixBlendMode: 'multiply',
+                              }
+                            : { background: 'transparent' }),
+                      }}
+                    />
+                    {!isFogged &&
+                      mapViewMode === 'buildings' &&
+                      (hasCastle || barrackCount > 0 || hasWall) && (
+                        <div
+                          style={{
+                            position: 'relative',
+                            zIndex: 2,
+                            padding: '0.2rem',
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '0.2rem',
+                            alignItems: 'flex-start',
+                            height: '100%',
+                            boxSizing: 'border-box',
+                            pointerEvents: 'none',
+                          }}
+                        >
+                          {hasCastle && <CastleGlyph size={22} tile />}
+                          {barrackCount > 0 && <BarrackGlyphTileWithCount count={barrackCount} size={22} />}
+                          {hasWall && <WallGlyph size={22} tile />}
                         </div>
-                      </>
-                    ))}
-                </div>
-                {isFogged && (
-                  <div aria-hidden style={{ position: 'absolute', inset: 0, zIndex: 4, pointerEvents: 'none' }}>
-                    <FogOfWarOverlay worldId={world.id} landId={land.id} />
-                  </div>
-                )}
-              </button>
-            );
-          })}
+                      )}
+                    {isFogged && (
+                      <div aria-hidden style={{ position: 'absolute', inset: 0, zIndex: 4, pointerEvents: 'none' }}>
+                        <FogOfWarOverlay worldId={world.id} landId={land.id} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div
+            aria-hidden
+            className="fe-map-frame-cell"
+            style={{
+              backgroundImage: `url(${MAP_FRAME_TILES.r})`,
+              backgroundRepeat: 'repeat-y',
+              backgroundSize: '100% auto',
+            }}
+          />
+
+          <div aria-hidden className="fe-map-frame-cell" style={{ backgroundImage: `url(${MAP_FRAME_TILES.bl})` }} />
+          <div
+            aria-hidden
+            className="fe-map-frame-cell"
+            style={{
+              backgroundImage: `url(${MAP_FRAME_TILES.b})`,
+              backgroundRepeat: 'repeat-x',
+              backgroundSize: 'auto 100%',
+            }}
+          />
+          <div aria-hidden className="fe-map-frame-cell" style={{ backgroundImage: `url(${MAP_FRAME_TILES.br})` }} />
         </div>
       </div>
       <p className="fe-muted" style={{ margin: 0, fontSize: '0.7rem' }}>
-        Сетка {rows}×{cols} · провинции — визуальный слой. ЛКМ — выбрать, ПКМ — меню.
+        Карта {rows}×{cols} · плато {SUBTILE}×{SUBTILE}, обрыв снизу. ЛКМ — выбрать, ПКМ — меню.
       </p>
+
+      {hoverTooltip != null && landContextMenu == null && (
+        <div
+          className="fe-tooltip"
+          role="tooltip"
+          style={{ left: hoverTooltip.x, top: hoverTooltip.y }}
+        >
+          <div className="fe-tooltip-title">{hoverTooltip.title}</div>
+          {hoverTooltip.lines.map((line) => (
+            <div key={line} className="fe-tooltip-line">
+              {line}
+            </div>
+          ))}
+        </div>
+      )}
 
       {landContextMenu != null && (
         <div

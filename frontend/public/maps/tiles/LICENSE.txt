@@ -1,0 +1,13 @@
+Kenney Map Pack
+Source: https://kenney.nl/assets/map-pack
+Also: https://opengameart.org/content/map-pack-180-assets
+Author: Kenney (www.kenney.nl)
+License: CC0 1.0 Universal (public domain dedication)
+
+Cropped / composited variants in this folder are derived from that pack
+and remain under CC0. Attribution is optional but appreciated.
+
+Assets:
+- frame_*.png — outer island border (water outside only)
+- grass_*/dirt_*/stone_* — interior autotile kits (fill, edges, corners)
+- decor_* — trees, mushrooms, mountain/rock overlays
