@@ -66,6 +66,7 @@ public class WorldService implements WorldUseCase {
         }
         Land land = free.get(ThreadLocalRandom.current().nextInt(free.size()));
         land.setPlayer(player);
+        WorldFactory.initStartingBuildingsForPlayerLand(land);
         world.ensurePlayerWorldResources(playerId);
         var turn = world.getTurn();
         if (turn.getCurrentPlayerId() == null) {

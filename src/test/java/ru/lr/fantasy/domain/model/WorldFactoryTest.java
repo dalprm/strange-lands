@@ -1,6 +1,8 @@
 package ru.lr.fantasy.domain.model;
 
 import org.junit.Test;
+import ru.lr.fantasy.domain.model.building.Buildings;
+import ru.lr.fantasy.domain.model.building.WallLevel;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -23,6 +25,22 @@ public class WorldFactoryTest {
         assertTrue(world.findPlayerWorldResources(1L).isPresent());
         assertTrue(world.findPlayerWorldResources(2L).isPresent());
         assertEquals(0, world.findPlayerWorldResources(1L).orElseThrow().getGold());
+        assertStartingCapital(world.getPlayerLands(dal).get(0).getBuildings());
+        assertStartingCapital(world.getPlayerLands(dragon).get(0).getBuildings());
+    }
+
+    @Test
+    public void testInitStartingBuildingsForPlayerLand() {
+        Land land = new Land(1, 1000, "1");
+        WorldFactory.initStartingBuildingsForPlayerLand(land);
+        assertStartingCapital(land.getBuildings());
+    }
+
+    private static void assertStartingCapital(Buildings buildings) {
+        assertTrue(buildings.hasCastle());
+        assertTrue(buildings.hasWall());
+        assertEquals(WallLevel.FORTRESS_LEVEL_3, buildings.getWallLevel());
+        assertEquals(2, buildings.getBarrackCount());
     }
 
     @Test

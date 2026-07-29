@@ -54,8 +54,8 @@ public class WorldFactory {
         }
     }
 
-    /** Стартовая капиталка для земли игрока при создании мира. */
-    private void initStartingBuildingsForPlayerLand(Land land) {
+    /** Стартовая капиталка для земли игрока (создание мира или добавление игрока). */
+    public static void initStartingBuildingsForPlayerLand(Land land) {
         land.addBuilding(new WallBuilding(WallLevel.FORTRESS_LEVEL_3));
         land.addBuilding(new CastleBuilding());
         land.addBuilding(new BarrackBuilding());
