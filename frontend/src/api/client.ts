@@ -11,6 +11,7 @@ export type BuildingsDto = {
   magicCastleCount?: number;
   clericCastleCount?: number;
   wallLevel?: string | null;
+  canBuildMore?: boolean;
   canBuildMagicCastle?: boolean;
   canBuildClericCastle?: boolean;
 };
@@ -63,17 +64,50 @@ export type Turn = {
   currentPlayerId: number | null;
 };
 
+function errorMessageFromBody(status: number, statusText: string, text: string, path: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return `${status} ${statusText}: ${path}`;
+  }
+  try {
+    const json = JSON.parse(trimmed) as {
+      message?: string;
+      detail?: string;
+      title?: string;
+      error?: string;
+    };
+    const reason = json.message ?? json.detail ?? json.title;
+    if (reason != null && String(reason).trim() !== '') {
+      return String(reason).trim();
+    }
+    if (json.error != null && String(json.error).trim() !== '') {
+      return `${status} ${json.error}`;
+    }
+  } catch {
+    /* not JSON — use raw text */
+  }
+  return `${status} ${statusText}: ${trimmed}`;
+}
+
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...init?.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...init?.headers,
+      },
+    });
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Нет связи с сервером (${path}). Запущены ли Vite (:5173) и Spring Boot (:8080)? ${detail}`,
+    );
+  }
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}: ${text || path}`);
+    throw new Error(errorMessageFromBody(res.status, res.statusText, text, path));
   }
   if (res.status === 204 || text.trim() === '') {
     return undefined as T;
@@ -170,20 +204,53 @@ export function buildBuilding(
   });
 }
 
-/** Набор воинов на земле (один тип за запрос). */
+/** Набор воинов на земле (один тип за запрос). turnCount задаёт сервер. */
 export function recruitWarriors(
   worldId: number,
   landId: number,
   warriorType: string,
   count: number,
-  turnCount?: number,
 ): Promise<void> {
-  const body: Record<string, unknown> = { warriorType, count };
-  if (turnCount != null) {
-    body.turnCount = turnCount;
-  }
   return fetchJson<void>(`/api/worlds/${worldId}/lands/${landId}/recruit`, {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify({ warriorType, count }),
   });
+}
+
+/** Атомарный batch-найм: items схлопнуты по типу. */
+export function recruitWarriorsBatch(
+  worldId: number,
+  landId: number,
+  items: { warriorType: string; count: number }[],
+): Promise<void> {
+  return fetchJson<void>(`/api/worlds/${worldId}/lands/${landId}/recruit-batch`, {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  });
+}
+
+export type RecruitOptionsDto = {
+  barrackSlotsFree: number;
+  barrackSlotsCapacity: number;
+  clericSlotsFree: number;
+  clericSlotsCapacity: number;
+  magicSlotsFree: number;
+  magicSlotsCapacity: number;
+  types: {
+    warriorType: string;
+    turnCount: number;
+    slotPool: string;
+    unitsPerSlot: number;
+    maxUnits: number;
+  }[];
+  pending: {
+    warriorType: string;
+    count: number;
+    turnsRemaining: number;
+    slotPool: string;
+  }[];
+};
+
+export function getRecruitOptions(worldId: number, landId: number): Promise<RecruitOptionsDto> {
+  return fetchJson<RecruitOptionsDto>(`/api/worlds/${worldId}/lands/${landId}/recruit-options`);
 }

@@ -6,7 +6,6 @@ import ru.lr.fantasy.domain.model.action.NewRecruitsAction;
 import ru.lr.fantasy.domain.model.action.WarriorsMoveInAction;
 import ru.lr.fantasy.domain.model.action.WarriorsMoveOutAction;
 import ru.lr.fantasy.domain.model.building.BarrackBuilding;
-import ru.lr.fantasy.domain.model.building.CastleBuilding;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -24,7 +23,6 @@ public class TurnTest {
 
         Turn turn = world.getTurn();
 
-        turn.acceptAction(new BuildBuildingAction(world, playerLand, new CastleBuilding()));
         turn.acceptAction(new BuildBuildingAction(world, playerLand, new BarrackBuilding()));
         turn.acceptAction(new NewRecruitsAction(world, playerLand, WarriorType.FIGHTER, 20, 1));
 
@@ -49,7 +47,6 @@ public class TurnTest {
 
         Turn turn = world.getTurn();
 
-        turn.acceptAction(new BuildBuildingAction(world, palyerLand, new CastleBuilding()));
         turn.acceptAction(new BuildBuildingAction(world, palyerLand, new BarrackBuilding()));
         turn.acceptAction(new NewRecruitsAction(world, palyerLand, WarriorType.FIGHTER, 20, 1));
         turn.doTurn();
@@ -80,7 +77,6 @@ public class TurnTest {
 
         Turn turn = world.getTurn();
 
-        turn.acceptAction(new BuildBuildingAction(world, playerLand, new CastleBuilding()));
         turn.acceptAction(new BuildBuildingAction(world, playerLand, new BarrackBuilding()));
         turn.acceptAction(new NewRecruitsAction(world, playerLand, WarriorType.FIGHTER, 20, 1));
         turn.doTurn();
@@ -119,7 +115,7 @@ public class TurnTest {
         Land land = world.getPlayerLands(dal).get(0);
         Turn turn = world.getTurn();
         turn.setCurrentPlayerId(42L);
-        turn.acceptAction(new BuildBuildingAction(world, land, new CastleBuilding()));
+        // столица уже с замком из WorldFactory
         int expectedIncome = land.getCosts();
         turn.doTurn();
         assertEquals(expectedIncome, world.findPlayerWorldResources(42L).orElseThrow().getGold());

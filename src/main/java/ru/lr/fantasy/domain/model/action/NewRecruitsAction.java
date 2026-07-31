@@ -1,6 +1,7 @@
 package ru.lr.fantasy.domain.model.action;
 
 import ru.lr.fantasy.domain.model.Land;
+import ru.lr.fantasy.domain.model.RecruitRules;
 import ru.lr.fantasy.domain.model.WarriorType;
 import ru.lr.fantasy.domain.model.World;
 
@@ -17,6 +18,31 @@ public class NewRecruitsAction implements IGameAction {
         this.warrior = warrior;
         this.warriorCount = warriorCount;
         this.turnCount = turnCount;
+    }
+
+    public Land getLand() {
+        return land;
+    }
+
+    public WarriorType getWarriorType() {
+        return warrior;
+    }
+
+    public int getWarriorCount() {
+        return warriorCount;
+    }
+
+    public int getTurnCountRemaining() {
+        return turnCount;
+    }
+
+    /** Слоты пула, занятые этим pending-наймом. */
+    public int slotsOccupied() {
+        return RecruitRules.slotsRequired(warrior, warriorCount);
+    }
+
+    public RecruitRules.SlotPool slotPool() {
+        return RecruitRules.poolFor(warrior);
     }
 
     @Override

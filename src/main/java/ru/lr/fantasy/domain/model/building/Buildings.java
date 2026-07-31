@@ -40,24 +40,47 @@ public class Buildings {
         return barrackCount + magicCastleCount + clericCastleCount < MAX_BUILDINGS;
     }
 
+    public static int maxCountableBuildings() {
+        return MAX_BUILDINGS;
+    }
+
     public void buildCastle() {
+        if (hasCastle) {
+            throw new IllegalStateException("На земле уже есть замок");
+        }
         hasCastle = true;
     }
 
     public void buildBarrack() {
+        assertCanBuildCountable("казарму");
         barrackCount++;
     }
 
     public void buildMagicCastle() {
+        assertCanBuildCountable("магический замок");
         magicCastleCount++;
     }
 
     public void buildClericCastle() {
+        assertCanBuildCountable("замок клирика");
         clericCastleCount++;
     }
 
     public void buildWall(WallLevel level) {
+        if (level == null) {
+            throw new IllegalStateException("Уровень стены не задан");
+        }
+        if (wallLevel != null && level.ordinal() <= wallLevel.ordinal()) {
+            throw new IllegalStateException("Стену можно только улучшить до более высокого уровня");
+        }
         this.wallLevel = level;
+    }
+
+    private void assertCanBuildCountable(String what) {
+        if (!canBuildMore()) {
+            throw new IllegalStateException(
+                    "Нельзя построить " + what + ": лимит зданий (" + MAX_BUILDINGS + ") исчерпан");
+        }
     }
 
     public void destroyCastle() {

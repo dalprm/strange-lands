@@ -17,12 +17,86 @@ export const WARRIOR_TYPE_LABEL: Record<string, string> = {
   MAGIC: 'Маг',
 };
 
+const WALL_LEVEL_ORDER = [
+  'FORTRESS_LEVEL_1',
+  'FORTRESS_LEVEL_2',
+  'FORTRESS_LEVEL_3',
+  'FORTRESS_LEVEL_4',
+] as const;
+
 const WALL_LEVEL_LABEL: Record<string, string> = {
   FORTRESS_LEVEL_1: 'крепость I',
   FORTRESS_LEVEL_2: 'крепость II',
   FORTRESS_LEVEL_3: 'крепость III',
   FORTRESS_LEVEL_4: 'крепость IV',
 };
+
+export const MAX_COUNTABLE_BUILDINGS = 6;
+
+export type BuildActionOption = {
+  type: 'CASTLE' | 'BARRACK' | 'WALL' | 'MAGIC_CASTLE' | 'CLERIC_CASTLE';
+  label: string;
+  wallLevel?: number;
+};
+
+/** Следующий уровень стены для апгрейда, или null если стена макс. */
+export function nextWallLevelIndex(b: BuildingsDto | null | undefined): number | null {
+  if (b == null || !landHasWall(b)) return 0;
+  const raw = String(b.wallLevel ?? '');
+  const idx = WALL_LEVEL_ORDER.indexOf(raw as (typeof WALL_LEVEL_ORDER)[number]);
+  if (idx < 0) return null;
+  if (idx >= WALL_LEVEL_ORDER.length - 1) return null;
+  return idx + 1;
+}
+
+export function landCanBuildMoreCountable(b: BuildingsDto | null | undefined): boolean {
+  if (b == null) return true;
+  if (typeof b.canBuildMore === 'boolean') return b.canBuildMore;
+  const used =
+    (b.barrackCount ?? 0) + (b.magicCastleCount ?? 0) + (b.clericCastleCount ?? 0);
+  return used < MAX_COUNTABLE_BUILDINGS;
+}
+
+/** Доступные кнопки постройки с учётом лимитов BUG-001. */
+export function availableBuildActions(b: BuildingsDto | null | undefined): BuildActionOption[] {
+  const out: BuildActionOption[] = [];
+  if (!landHasCastle(b)) {
+    out.push({ type: 'CASTLE', label: 'Замок' });
+  }
+  if (landCanBuildMoreCountable(b)) {
+    out.push({ type: 'BARRACK', label: 'Казарма' });
+    out.push({ type: 'MAGIC_CASTLE', label: 'Магический замок' });
+    out.push({ type: 'CLERIC_CASTLE', label: 'Замок клирика' });
+  }
+  const nextWall = nextWallLevelIndex(b);
+  if (nextWall != null) {
+    const levelKey = WALL_LEVEL_ORDER[nextWall];
+    const label =
+      nextWall === 0 || levelKey == null
+        ? 'Стена'
+        : `Стена → ${WALL_LEVEL_LABEL[levelKey] ?? levelKey}`;
+    out.push({ type: 'WALL', label, wallLevel: nextWall });
+  }
+  return out;
+}
+
+/** Подписи типов построек (DM / логи). */
+export const BUILDING_TYPE_LABEL: Record<string, string> = {
+  CASTLE: 'Замок',
+  BARRACK: 'Казарма',
+  WALL: 'Стена',
+  MAGIC_CASTLE: 'Магический замок',
+  CLERIC_CASTLE: 'Замок клирика',
+};
+
+/** @deprecated используйте availableBuildActions / BUILDING_TYPE_LABEL */
+export const BUILDING_TYPES = [
+  { type: 'CASTLE', label: 'Замок' },
+  { type: 'BARRACK', label: 'Казарма' },
+  { type: 'WALL', label: 'Стена', wallLevel: 0 },
+  { type: 'MAGIC_CASTLE', label: 'Магический замок' },
+  { type: 'CLERIC_CASTLE', label: 'Замок клирика' },
+] as const;
 
 export function warriorTypeLabel(type: string | undefined): string {
   if (type == null || type === '') return '—';
@@ -150,14 +224,6 @@ export function collectPlayersForLegend(lands: LandDto[]): LegendPlayer[] {
   }
   return [...map.values()].sort((a, b) => a.id - b.id);
 }
-
-export const BUILDING_TYPES = [
-  { type: 'CASTLE', label: 'Замок' },
-  { type: 'BARRACK', label: 'Казарма' },
-  { type: 'WALL', label: 'Стена', wallLevel: 0 },
-  { type: 'MAGIC_CASTLE', label: 'Магический замок' },
-  { type: 'CLERIC_CASTLE', label: 'Замок клирика' },
-] as const;
 
 export const FOG_BLOCKED_MESSAGE = 'Сюда еще идти и идти';
 export const RECRUIT_COUNT_STEP = 40;

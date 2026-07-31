@@ -4,8 +4,10 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import ru.lr.fantasy.domain.model.action.CollectCastleIncomeAction;
 import ru.lr.fantasy.domain.model.action.IGameAction;
+import ru.lr.fantasy.domain.model.action.NewRecruitsAction;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
@@ -155,4 +157,71 @@ public class Turn {
     public int getPendingActionsCount() {
         return actionOfTurn.size();
     }
+
+    /** Сумма слотов pending-наймов на земле в указанном пуле. */
+    public int pendingRecruitSlots(Land land, RecruitRules.SlotPool pool) {
+        int sum = 0;
+        for (IGameAction action : actionOfTurn) {
+            if (action instanceof NewRecruitsAction recruit
+                    && recruit.getLand() != null
+                    && land != null
+                    && Objects.equals(recruit.getLand().getId(), land.getId())
+                    && recruit.slotPool() == pool) {
+                sum += recruit.slotsOccupied();
+            }
+        }
+        return sum;
+    }
+
+    /** Отменить pending-наймы только для этой земли (смена владельца). */
+    public void cancelPendingRecruitsForLand(Land land) {
+        if (land == null || land.getId() == null) {
+            return;
+        }
+        Long landId = land.getId();
+        ArrayDeque<IGameAction> kept = new ArrayDeque<>();
+        while (!actionOfTurn.isEmpty()) {
+            IGameAction action = actionOfTurn.pollFirst();
+            if (action instanceof NewRecruitsAction recruit
+                    && recruit.getLand() != null
+                    && landId.equals(recruit.getLand().getId())) {
+                continue;
+            }
+            kept.addLast(action);
+        }
+        actionOfTurn = kept;
+    }
+
+    /** Pending-наймы земли: по одной записи на слот. */
+    public List<PendingRecruitSlot> pendingRecruitSlotsDetail(Land land) {
+        if (land == null || land.getId() == null) {
+            return List.of();
+        }
+        Long landId = land.getId();
+        List<PendingRecruitSlot> out = new ArrayList<>();
+        for (IGameAction action : actionOfTurn) {
+            if (!(action instanceof NewRecruitsAction recruit)
+                    || recruit.getLand() == null
+                    || !landId.equals(recruit.getLand().getId())) {
+                continue;
+            }
+            int slots = recruit.slotsOccupied();
+            int perSlot = RecruitRules.isOrdinary(recruit.getWarriorType()) ? 40 : 1;
+            for (int i = 0; i < slots; i++) {
+                out.add(new PendingRecruitSlot(
+                        recruit.getWarriorType(),
+                        perSlot,
+                        recruit.getTurnCountRemaining(),
+                        recruit.slotPool()));
+            }
+        }
+        return out;
+    }
+
+    public record PendingRecruitSlot(
+            WarriorType warriorType,
+            int count,
+            int turnsRemaining,
+            RecruitRules.SlotPool slotPool
+    ) {}
 }

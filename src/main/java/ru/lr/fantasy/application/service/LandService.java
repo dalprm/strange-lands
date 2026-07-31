@@ -9,9 +9,14 @@ import ru.lr.fantasy.domain.model.action.NewRecruitsAction;
 import ru.lr.fantasy.domain.model.action.WarriorsMoveInAction;
 import ru.lr.fantasy.domain.model.action.WarriorsMoveOutAction;
 import ru.lr.fantasy.domain.model.*;
+import ru.lr.fantasy.application.port.in.LandUseCase.RecruitBatchItem;
 import ru.lr.fantasy.domain.model.building.Building;
 
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @org.springframework.stereotype.Service
 public class LandService implements LandUseCase {
@@ -72,18 +77,110 @@ public class LandService implements LandUseCase {
         World world = getWorld(worldId);
         Land land = world.getLand(landId);
         assertLandOwnerIsCurrentPlayer(world, land);
-        world.getTurn().acceptAction(new BuildBuildingAction(world, land, building));
+        try {
+            world.getTurn().acceptAction(new BuildBuildingAction(world, land, building));
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        }
         worldRepository.save(world);
     }
 
     @Override
     public void recruitWarriors(Long worldId, Long landId, WarriorType warriorType, int count, int turnCount) {
+        recruitWarriorsBatch(worldId, landId, List.of(new RecruitBatchItem(warriorType, count)));
+    }
+
+    @Override
+    public void recruitWarriorsBatch(Long worldId, Long landId, List<RecruitBatchItem> items) {
+        if (items == null || items.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Пустой список найма");
+        }
         World world = getWorld(worldId);
         Land land = world.getLand(landId);
         assertLandOwnerIsCurrentPlayer(world, land);
-        int tc = Math.max(1, turnCount);
-        world.getTurn().acceptAction(new NewRecruitsAction(world, land, warriorType, count, tc));
+        Turn turn = world.getTurn();
+
+        // схлопнуть дубликаты типов на всякий случай
+        Map<WarriorType, Integer> collapsed = new LinkedHashMap<>();
+        for (RecruitBatchItem item : items) {
+            if (item == null || item.warriorType() == null || item.count() <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Некорректный элемент найма");
+            }
+            collapsed.merge(item.warriorType(), item.count(), Integer::sum);
+        }
+
+        Map<RecruitRules.SlotPool, Integer> extraPending = new EnumMap<>(RecruitRules.SlotPool.class);
+        try {
+            for (var entry : collapsed.entrySet()) {
+                WarriorType type = entry.getKey();
+                int count = entry.getValue();
+                RecruitRules.SlotPool pool = RecruitRules.poolFor(type);
+                int pending = turn.pendingRecruitSlots(land, pool) + extraPending.getOrDefault(pool, 0);
+                RecruitRules.assertCanRecruit(land, type, count, pending);
+                extraPending.merge(pool, RecruitRules.slotsRequired(type, count), Integer::sum);
+            }
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        }
+
+        for (var entry : collapsed.entrySet()) {
+            WarriorType type = entry.getKey();
+            int count = entry.getValue();
+            int tc = RecruitRules.turnCountFor(type);
+            turn.acceptAction(new NewRecruitsAction(world, land, type, count, tc));
+        }
         worldRepository.save(world);
+    }
+
+    @Override
+    public RecruitOptions getRecruitOptions(Long worldId, Long landId) {
+        World world = getWorld(worldId);
+        Land land = world.getLand(landId);
+        if (land == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Земля не найдена: " + landId);
+        }
+        Turn turn = world.getTurn();
+        var buildings = land.getBuildings();
+        int barrackCap = RecruitRules.barrackSlotCapacity(buildings);
+        int clericCap = RecruitRules.clericSlotCapacity(buildings);
+        int magicCap = RecruitRules.magicSlotCapacity(buildings);
+        int barrackFree = barrackCap - turn.pendingRecruitSlots(land, RecruitRules.SlotPool.BARRACK);
+        int clericFree = clericCap - turn.pendingRecruitSlots(land, RecruitRules.SlotPool.CLERIC);
+        int magicFree = magicCap - turn.pendingRecruitSlots(land, RecruitRules.SlotPool.MAGIC);
+
+        List<RecruitOptions.TypeOption> types = new ArrayList<>();
+        for (WarriorType type : RecruitRules.eligibleTypes(land)) {
+            RecruitRules.SlotPool pool = RecruitRules.poolFor(type);
+            int free = switch (pool) {
+                case BARRACK -> barrackFree;
+                case CLERIC -> clericFree;
+                case MAGIC -> magicFree;
+            };
+            int unitsPerSlot = RecruitRules.isOrdinary(type) ? 40 : 1;
+            int maxUnits = Math.max(0, free) * unitsPerSlot;
+            types.add(new RecruitOptions.TypeOption(
+                    type,
+                    RecruitRules.turnCountFor(type),
+                    pool,
+                    unitsPerSlot,
+                    maxUnits));
+        }
+        List<RecruitOptions.PendingSlot> pending = turn.pendingRecruitSlotsDetail(land).stream()
+                .map(p -> new RecruitOptions.PendingSlot(
+                        p.warriorType(),
+                        p.count(),
+                        p.turnsRemaining(),
+                        p.slotPool()))
+                .toList();
+        return new RecruitOptions(
+                Math.max(0, barrackFree),
+                barrackCap,
+                Math.max(0, clericFree),
+                clericCap,
+                Math.max(0, magicFree),
+                magicCap,
+                types,
+                pending);
     }
 
     @Override

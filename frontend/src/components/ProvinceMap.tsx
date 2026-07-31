@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
-import type { LandDto, WorldDetail } from '../api/client';
-import { getMoveSourceLands, moveWarriors, recruitWarriors } from '../api/client';
+import type { LandDto, RecruitOptionsDto, WorldDetail } from '../api/client';
+import { getMoveSourceLands, getRecruitOptions, moveWarriors, recruitWarriorsBatch } from '../api/client';
 import {
   FOG_BLOCKED_MESSAGE,
-  RECRUIT_COUNT_STEP,
   collectPlayersForLegend,
   computeFogOfWarVisibleLandIds,
   landBarrackCount,
@@ -55,6 +54,16 @@ type LandHoverTooltip = {
   lines: string[];
 };
 
+type RecruitDraftSlot = {
+  id: string;
+  warriorType: string;
+  count: number;
+  turnCount: number;
+  slotPool: string;
+};
+
+let recruitDraftSeq = 0;
+
 export function ProvinceMap({
   world,
   currentPlayerId,
@@ -72,7 +81,10 @@ export function ProvinceMap({
   const [landContextMenu, setLandContextMenu] = useState<LandContextMenuState | null>(null);
   const [fogBlockedModalOpen, setFogBlockedModalOpen] = useState(false);
   const [recruitLandId, setRecruitLandId] = useState<number | null>(null);
-  const [recruitCounts, setRecruitCounts] = useState<Record<string, number>>({});
+  const [recruitOptions, setRecruitOptions] = useState<RecruitOptionsDto | null>(null);
+  const [recruitOptionsLoading, setRecruitOptionsLoading] = useState(false);
+  const [selectedRecruitType, setSelectedRecruitType] = useState<string | null>(null);
+  const [recruitDraft, setRecruitDraft] = useState<RecruitDraftSlot[]>([]);
   const [recruitSubmitting, setRecruitSubmitting] = useState(false);
   const [recruitError, setRecruitError] = useState<string | null>(null);
   const [captureMove, setCaptureMove] = useState<CaptureMoveState | null>(null);
@@ -111,7 +123,9 @@ export function ProvinceMap({
     setFogBlockedModalOpen(false);
     setRecruitLandId(null);
     setRecruitError(null);
-    setRecruitCounts({});
+    setRecruitOptions(null);
+    setSelectedRecruitType(null);
+    setRecruitDraft([]);
     setCaptureMove(null);
     setCaptureInitError(null);
     setMoveWarriorsModal(null);
@@ -153,17 +167,112 @@ export function ProvinceMap({
   }, [moveWarriorsModal, world]);
 
   useEffect(() => {
-    if (recruitLandId == null || world == null || !world.lands?.length) {
-      setRecruitCounts({});
+    if (recruitLandId == null || world == null) {
+      setRecruitOptions(null);
+      setSelectedRecruitType(null);
+      setRecruitDraft([]);
       return;
     }
-    const land = world.lands.find((l) => l.id === recruitLandId);
-    const types = land?.accessBuildWarriorTypes ?? [];
-    const next: Record<string, number> = {};
-    for (const t of types) next[t] = 0;
-    setRecruitCounts(next);
+    let cancelled = false;
+    setRecruitOptionsLoading(true);
     setRecruitError(null);
-  }, [recruitLandId, world]);
+    setRecruitDraft([]);
+    getRecruitOptions(world.id, recruitLandId)
+      .then((opts) => {
+        if (cancelled) return;
+        setRecruitOptions(opts);
+        setSelectedRecruitType((prev) => {
+          if (prev != null && opts.types.some((t) => t.warriorType === prev)) return prev;
+          return opts.types[0]?.warriorType ?? null;
+        });
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        setRecruitOptions(null);
+        setSelectedRecruitType(null);
+        setRecruitError(msg);
+      })
+      .finally(() => {
+        if (!cancelled) setRecruitOptionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [recruitLandId, world?.id]);
+
+  function closeRecruitModal() {
+    setRecruitLandId(null);
+    setRecruitError(null);
+    setSelectedRecruitType(null);
+    setRecruitDraft([]);
+  }
+
+  function draftSlotsInPool(pool: string): number {
+    return recruitDraft.filter((d) => d.slotPool === pool).length;
+  }
+
+  function freeSlotsForPool(pool: string): number {
+    if (recruitOptions == null) return 0;
+    const base =
+      pool === 'CLERIC'
+        ? recruitOptions.clericSlotsFree
+        : pool === 'MAGIC'
+          ? recruitOptions.magicSlotsFree
+          : recruitOptions.barrackSlotsFree;
+    return Math.max(0, base - draftSlotsInPool(pool));
+  }
+
+  function addDraftSlot(warriorType: string) {
+    const opt = recruitOptions?.types.find((t) => t.warriorType === warriorType);
+    if (opt == null || recruitSubmitting) return;
+    if (freeSlotsForPool(opt.slotPool) < 1) {
+      setRecruitError('Недостаточно свободных слотов.');
+      return;
+    }
+    setRecruitError(null);
+    setSelectedRecruitType(warriorType);
+    recruitDraftSeq += 1;
+    setRecruitDraft((prev) => [
+      ...prev,
+      {
+        id: `draft-${recruitDraftSeq}`,
+        warriorType: opt.warriorType,
+        count: opt.unitsPerSlot,
+        turnCount: opt.turnCount,
+        slotPool: opt.slotPool,
+      },
+    ]);
+  }
+
+  function removeDraftSlot(id: string) {
+    if (recruitSubmitting) return;
+    setRecruitDraft((prev) => prev.filter((d) => d.id !== id));
+    setRecruitError(null);
+  }
+
+  async function confirmRecruitBatch() {
+    if (world == null || recruitLandId == null || onWorldRefresh == null || recruitDraft.length === 0) return;
+    const collapsed = new Map<string, number>();
+    for (const d of recruitDraft) {
+      collapsed.set(d.warriorType, (collapsed.get(d.warriorType) ?? 0) + d.count);
+    }
+    const items = [...collapsed.entries()].map(([warriorType, count]) => ({ warriorType, count }));
+    setRecruitSubmitting(true);
+    setRecruitError(null);
+    try {
+      await recruitWarriorsBatch(world.id, recruitLandId, items);
+      await onWorldRefresh();
+      closeRecruitModal();
+      onActionMessage?.('recruit');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setRecruitError(msg);
+      onActionMessage?.('error', msg);
+    } finally {
+      setRecruitSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     if (landContextMenu == null) return;
@@ -188,6 +297,9 @@ export function ProvinceMap({
       setLandContextMenu(null);
       setFogBlockedModalOpen(false);
       setRecruitLandId(null);
+      setRecruitError(null);
+      setSelectedRecruitType(null);
+      setRecruitDraft([]);
       setCaptureMove(null);
       setCaptureInitError(null);
       setMoveWarriorsModal(null);
@@ -266,31 +378,6 @@ export function ProvinceMap({
     onSelectLand(land.id);
   }
 
-  async function confirmRecruit() {
-    if (world == null || recruitLandId == null || onWorldRefresh == null) return;
-    const entries = Object.entries(recruitCounts).filter(([, c]) => c > 0);
-    if (entries.length === 0) {
-      setRecruitError('Укажите количество хотя бы для одного типа.');
-      return;
-    }
-    setRecruitSubmitting(true);
-    setRecruitError(null);
-    try {
-      for (const [warriorType, count] of entries) {
-        await recruitWarriors(world.id, recruitLandId, warriorType, count);
-      }
-      await onWorldRefresh();
-      setRecruitLandId(null);
-      onActionMessage?.('recruit');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setRecruitError(msg);
-      onActionMessage?.('error', msg);
-    } finally {
-      setRecruitSubmitting(false);
-    }
-  }
-
   async function confirmMoveWarriors() {
     if (world == null || moveWarriorsModal == null || onWorldRefresh == null) return;
     const fromLand = world.lands?.find((l) => l.id === moveWarriorsModal.fromId);
@@ -329,11 +416,16 @@ export function ProvinceMap({
     }
   }
 
-  const recruitLand =
-    recruitLandId != null && world != null
-      ? (world.lands?.find((l) => l.id === recruitLandId) ?? null)
-      : null;
-  const recruitTypes = recruitLand?.accessBuildWarriorTypes ?? [];
+  const recruitTypes = recruitOptions?.types ?? [];
+  const recruitPending = recruitOptions?.pending ?? [];
+  const selectedOpt = recruitTypes.find((t) => t.warriorType === selectedRecruitType) ?? null;
+  const canConfirmRecruit = recruitDraft.length > 0 && !recruitSubmitting;
+  const displayBarrackFree =
+    recruitOptions == null ? 0 : Math.max(0, recruitOptions.barrackSlotsFree - draftSlotsInPool('BARRACK'));
+  const displayClericFree =
+    recruitOptions == null ? 0 : Math.max(0, recruitOptions.clericSlotsFree - draftSlotsInPool('CLERIC'));
+  const displayMagicFree =
+    recruitOptions == null ? 0 : Math.max(0, recruitOptions.magicSlotsFree - draftSlotsInPool('MAGIC'));
   const moveFromLand =
     moveWarriorsModal != null && world != null
       ? (world.lands?.find((l) => l.id === moveWarriorsModal.fromId) ?? null)
@@ -766,53 +858,150 @@ export function ProvinceMap({
           role="presentation"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget && !recruitSubmitting) {
-              setRecruitLandId(null);
-              setRecruitError(null);
+              closeRecruitModal();
             }
           }}
         >
-          <div className="fe-panel fe-modal" role="dialog" aria-modal="true">
-            <div className="fe-title" style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>
+          <div className="fe-panel fe-modal fe-modal-recruit" role="dialog" aria-modal="true">
+            <div className="fe-title" style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>
               Найм на земле #{recruitLandId}
             </div>
-            {recruitTypes.length === 0 ? (
+            {recruitOptions != null && (
+              <p className="fe-muted" style={{ fontSize: '0.78rem', marginTop: 0, marginBottom: '0.65rem' }}>
+                Слоты: казарма {displayBarrackFree}/{recruitOptions.barrackSlotsCapacity}
+                {', '}
+                клерик {displayClericFree}/{recruitOptions.clericSlotsCapacity}
+                {', '}
+                маг {displayMagicFree}/{recruitOptions.magicSlotsCapacity}
+              </p>
+            )}
+            {recruitOptionsLoading ? (
+              <p className="fe-muted">Загрузка вариантов найма…</p>
+            ) : recruitTypes.length === 0 && recruitPending.length === 0 && recruitDraft.length === 0 ? (
               <p className="fe-muted">Нет доступных типов для найма.</p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-                {recruitTypes.map((warriorType) => (
-                  <label key={warriorType} className="fe-label" style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>{warriorTypeLabel(warriorType)}</span>
-                    <input
-                      className="fe-input"
-                      type="number"
-                      min={0}
-                      step={RECRUIT_COUNT_STEP}
-                      disabled={recruitSubmitting}
-                      value={recruitCounts[warriorType] ?? 0}
-                      onChange={(e) => {
-                        const v = Number.parseInt(e.target.value, 10);
-                        setRecruitCounts((prev) => ({
-                          ...prev,
-                          [warriorType]: Number.isFinite(v) ? Math.max(0, v) : 0,
-                        }));
-                      }}
-                      style={{ width: '6rem' }}
-                    />
-                  </label>
-                ))}
-              </div>
+              <>
+                <div className="fe-recruit-panels">
+                  <div className="fe-recruit-panel">
+                    <div className="fe-muted" style={{ fontSize: '0.72rem', marginBottom: '0.35rem' }}>
+                      Тип войск — клик добавляет в очередь
+                    </div>
+                    <div className="fe-recruit-type-list" role="listbox" aria-label="Тип войск">
+                      {recruitTypes.map((opt) => {
+                        const selected = opt.warriorType === selectedRecruitType;
+                        const noSlots = freeSlotsForPool(opt.slotPool) < 1;
+                        return (
+                          <button
+                            key={opt.warriorType}
+                            type="button"
+                            role="option"
+                            aria-selected={selected}
+                            className="fe-recruit-type-btn"
+                            disabled={recruitSubmitting || noSlots}
+                            style={
+                              selected
+                                ? { borderColor: 'var(--fe-accent)', background: 'rgba(201, 162, 39, 0.14)' }
+                                : undefined
+                            }
+                            onClick={() => addDraftSlot(opt.warriorType)}
+                          >
+                            <span>{warriorTypeLabel(opt.warriorType)}</span>
+                            {noSlots ? (
+                              <span className="fe-muted" style={{ fontSize: '0.72rem' }}>
+                                нет слотов
+                              </span>
+                            ) : (
+                              <span className="fe-muted" style={{ fontSize: '0.72rem' }}>
+                                +{opt.unitsPerSlot}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="fe-recruit-panel">
+                    <div className="fe-muted" style={{ fontSize: '0.72rem', marginBottom: '0.35rem' }}>
+                      Очередь (1 строка = 1 слот)
+                    </div>
+                    <div className="fe-recruit-queue">
+                      {recruitPending.length === 0 && recruitDraft.length === 0 ? (
+                        <p className="fe-muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                          Пока пусто — кликните тип слева.
+                        </p>
+                      ) : (
+                        <>
+                          {recruitPending.map((p, i) => (
+                            <div
+                              key={`srv-${p.warriorType}-${i}-${p.turnsRemaining}`}
+                              className="fe-recruit-queue-row fe-recruit-queue-row-server"
+                              title="Уже в найме — удалить нельзя"
+                            >
+                              <span>
+                                {warriorTypeLabel(p.warriorType)}
+                                {p.count > 1 ? ` ×${p.count}` : ''}
+                              </span>
+                              <span className="fe-muted">
+                                {p.turnsRemaining === 1
+                                  ? 'через 1 ход'
+                                  : `через ${p.turnsRemaining} хода`}
+                              </span>
+                            </div>
+                          ))}
+                          {recruitDraft.map((d) => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              className="fe-recruit-queue-row fe-recruit-queue-row-draft"
+                              disabled={recruitSubmitting}
+                              title="Клик — убрать из черновика"
+                              onClick={() => removeDraftSlot(d.id)}
+                            >
+                              <span>
+                                {warriorTypeLabel(d.warriorType)}
+                                {d.count > 1 ? ` ×${d.count}` : ''}
+                              </span>
+                              <span className="fe-muted">
+                                {d.turnCount === 1 ? 'через 1 ход' : `через ${d.turnCount} хода`} · новый
+                              </span>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="fe-recruit-footer">
+                  {selectedOpt != null ? (
+                    <p style={{ margin: 0, fontSize: '0.84rem' }}>
+                      <strong>{warriorTypeLabel(selectedOpt.warriorType)}</strong>
+                      <span className="fe-muted">
+                        {' '}
+                        · найм {selectedOpt.turnCount}{' '}
+                        {selectedOpt.turnCount === 1 ? 'ход' : selectedOpt.turnCount < 5 ? 'хода' : 'ходов'}
+                        {' · '}
+                        свободно слотов {freeSlotsForPool(selectedOpt.slotPool)}
+                        {' · '}за клик {selectedOpt.unitsPerSlot}
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="fe-muted" style={{ margin: 0, fontSize: '0.84rem' }}>
+                      Клик по типу добавляет слот в очередь справа.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="fe-btn fe-btn-ok"
+                    disabled={!canConfirmRecruit || onWorldRefresh == null || recruitOptionsLoading}
+                    onClick={() => void confirmRecruitBatch()}
+                  >
+                    {recruitSubmitting ? 'Найм…' : 'Нанять'}
+                  </button>
+                </div>
+              </>
             )}
-            {recruitError != null && <p style={{ color: 'var(--fe-danger)', fontSize: '0.84rem' }}>{recruitError}</p>}
-            {recruitTypes.length > 0 && (
-              <button
-                type="button"
-                className="fe-btn fe-btn-ok"
-                disabled={recruitSubmitting || onWorldRefresh == null}
-                style={{ marginTop: '0.85rem' }}
-                onClick={() => void confirmRecruit()}
-              >
-                {recruitSubmitting ? 'Отправка…' : 'Подтвердить найм'}
-              </button>
+            {recruitError != null && (
+              <p style={{ color: 'var(--fe-danger)', fontSize: '0.84rem', marginBottom: 0 }}>{recruitError}</p>
             )}
           </div>
         </div>

@@ -123,7 +123,7 @@ public class World {
         } else if (toLand.hasPlayer() && !toLand.getPlayer().equals(player)) {
             battle(toLand, player, warriors);
         } else {
-            toLand.setPlayer(player);
+            assignLandOwner(toLand, player);
             toLand.addWarriors(warriors);
         }
     }
@@ -153,8 +153,20 @@ public class World {
         }
 
         if (attCount > 0) {
-            defenceLand.setPlayer(attackedPlayer);
+            assignLandOwner(defenceLand, attackedPlayer);
             warriorsMoveIn(defenceLand, attackedPlayer, attackedWarriors);
+        }
+    }
+
+    /** Смена владельца земли: отменяет pending-наймы этой земли. */
+    public void assignLandOwner(Land land, Player newOwner) {
+        Player previous = land.getPlayer();
+        boolean changing =
+                (previous == null) != (newOwner == null)
+                        || (previous != null && newOwner != null && !previous.equals(newOwner));
+        land.setPlayer(newOwner);
+        if (changing && turn != null) {
+            turn.cancelPendingRecruitsForLand(land);
         }
     }
 

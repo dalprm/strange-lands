@@ -1,14 +1,19 @@
 package ru.lr.fantasy.infrastructure.web.controller;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import ru.lr.fantasy.application.port.in.LandUseCase;
 import ru.lr.fantasy.domain.model.Land;
+import ru.lr.fantasy.domain.model.RecruitOptions;
 import ru.lr.fantasy.domain.model.Warrior;
 import ru.lr.fantasy.domain.model.WarriorType;
 import ru.lr.fantasy.domain.model.building.*;
+import ru.lr.fantasy.infrastructure.web.dto.diagnostic.RecruitOptionsDto;
 import ru.lr.fantasy.infrastructure.web.dto.request.BuildBuildingRequest;
 import ru.lr.fantasy.infrastructure.web.dto.request.MoveWarriorsRequest;
+import ru.lr.fantasy.infrastructure.web.dto.request.RecruitBatchRequest;
 import ru.lr.fantasy.infrastructure.web.dto.request.RecruitRequest;
 
 import java.util.List;
@@ -56,6 +61,37 @@ public class LandController {
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/{landId}/recruit-options")
+    public ResponseEntity<RecruitOptionsDto> getRecruitOptions(
+            @PathVariable Long worldId,
+            @PathVariable Long landId) {
+        RecruitOptions options = landUseCase.getRecruitOptions(worldId, landId);
+        List<RecruitOptionsDto.RecruitTypeOptionDto> types = options.types().stream()
+                .map(t -> new RecruitOptionsDto.RecruitTypeOptionDto(
+                        t.warriorType().name(),
+                        t.turnCount(),
+                        t.slotPool().name(),
+                        t.unitsPerSlot(),
+                        t.maxUnits()))
+                .toList();
+        List<RecruitOptionsDto.PendingRecruitDto> pending = options.pending().stream()
+                .map(p -> new RecruitOptionsDto.PendingRecruitDto(
+                        p.warriorType().name(),
+                        p.count(),
+                        p.turnsRemaining(),
+                        p.slotPool().name()))
+                .toList();
+        return ResponseEntity.ok(new RecruitOptionsDto(
+                options.barrackSlotsFree(),
+                options.barrackSlotsCapacity(),
+                options.clericSlotsFree(),
+                options.clericSlotsCapacity(),
+                options.magicSlotsFree(),
+                options.magicSlotsCapacity(),
+                types,
+                pending));
+    }
+
     @PostMapping("/{landId}/recruit")
     public ResponseEntity<Void> recruitWarriors(
             @PathVariable Long worldId,
@@ -63,8 +99,35 @@ public class LandController {
             @RequestBody RecruitRequest request) {
         
         WarriorType warriorType = WarriorType.valueOf(request.getWarriorType());
-        int turnCount = request.getTurnCount() != null ? request.getTurnCount() : 1;
-        landUseCase.recruitWarriors(worldId, landId, warriorType, request.getCount(), turnCount);
+        // turnCount from client ignored — server uses RecruitRules
+        landUseCase.recruitWarriors(worldId, landId, warriorType, request.getCount(), 0);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{landId}/recruit-batch")
+    public ResponseEntity<Void> recruitWarriorsBatch(
+            @PathVariable Long worldId,
+            @PathVariable Long landId,
+            @RequestBody RecruitBatchRequest request) {
+        if (request == null || request.getItems() == null || request.getItems().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Пустой список найма");
+        }
+        List<LandUseCase.RecruitBatchItem> items = request.getItems().stream()
+                .map(i -> {
+                    if (i == null || i.getWarriorType() == null || i.getWarriorType().isBlank() || i.getCount() == null) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Некорректный элемент найма");
+                    }
+                    try {
+                        return new LandUseCase.RecruitBatchItem(
+                                WarriorType.valueOf(i.getWarriorType().trim()),
+                                i.getCount());
+                    } catch (IllegalArgumentException e) {
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST, "Неизвестный тип войск: " + i.getWarriorType());
+                    }
+                })
+                .toList();
+        landUseCase.recruitWarriorsBatch(worldId, landId, items);
         return ResponseEntity.ok().build();
     }
 

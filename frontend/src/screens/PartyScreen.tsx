@@ -17,7 +17,7 @@ import {
   dmTurn,
   dmWelcome,
 } from '../dm/messages';
-import { BUILDING_TYPES, landOwnerLabel } from '../land/helpers';
+import { BUILDING_TYPE_LABEL, landOwnerLabel } from '../land/helpers';
 
 type Props = {
   worldId: number;
@@ -103,7 +103,7 @@ export function PartyScreen({ worldId, players, onBackToLobby }: Props) {
     try {
       await api.buildBuilding(worldId, landId, buildingType, wallLevel);
       await refresh();
-      const label = BUILDING_TYPES.find((b) => b.type === buildingType)?.label ?? buildingType;
+      const label = BUILDING_TYPE_LABEL[buildingType] ?? buildingType;
       setDm(dmBuilt(label));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

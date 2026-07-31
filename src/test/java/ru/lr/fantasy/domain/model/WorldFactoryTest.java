@@ -27,6 +27,12 @@ public class WorldFactoryTest {
         assertEquals(0, world.findPlayerWorldResources(1L).orElseThrow().getGold());
         assertStartingCapital(world.getPlayerLands(dal).get(0).getBuildings());
         assertStartingCapital(world.getPlayerLands(dragon).get(0).getBuildings());
+        for (Land land : world.getLands()) {
+            assertTrue(land.getAccessBuildWarriorTypes().contains(WarriorType.FIGHTER));
+            assertTrue(land.getAccessBuildWarriorTypes().contains(WarriorType.CATAPULT));
+            assertTrue(land.getAccessBuildWarriorTypes().contains(WarriorType.BALISTA));
+            assertTrue(land.getAccessBuildWarriorTypes().contains(WarriorType.TARAN));
+        }
     }
 
     @Test

@@ -1,6 +1,6 @@
 import type { LandDto, WorldDetail } from '../api/client';
 import {
-  BUILDING_TYPES,
+  availableBuildActions,
   buildingSummaryLines,
   formatWarriorLine,
   landBarrackCount,
@@ -61,6 +61,7 @@ export function ProvincePanel({
   const hasWall = landHasWall(land.buildings);
   const wallCaption = landWallLevelDisplay(land.buildings);
   const barrackCount = landBarrackCount(land.buildings);
+  const buildActions = availableBuildActions(land.buildings);
 
   return (
     <div className="fe-frame" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
@@ -148,19 +149,23 @@ export function ProvincePanel({
                 Постройка
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                {BUILDING_TYPES.map((b) => (
-                  <button
-                    key={b.type}
-                    type="button"
-                    className="fe-btn"
-                    disabled={busy}
-                    onClick={() =>
-                      onBuild(land.id, b.type, 'wallLevel' in b ? b.wallLevel : undefined)
-                    }
-                  >
-                    {b.label}
-                  </button>
-                ))}
+                {buildActions.length === 0 ? (
+                  <span className="fe-muted" style={{ fontSize: '0.75rem' }}>
+                    Нет доступных построек
+                  </span>
+                ) : (
+                  buildActions.map((b) => (
+                    <button
+                      key={`${b.type}-${b.wallLevel ?? ''}`}
+                      type="button"
+                      className="fe-btn"
+                      disabled={busy}
+                      onClick={() => onBuild(land.id, b.type, b.wallLevel)}
+                    >
+                      {b.label}
+                    </button>
+                  ))
+                )}
               </div>
               <button
                 type="button"

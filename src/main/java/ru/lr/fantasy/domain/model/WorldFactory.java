@@ -71,6 +71,9 @@ public class WorldFactory {
                 current++;
                 Land land = new Land(current, generateCosts(), generateName(current));
                 land.addAccessBuildWarriorType(WarriorType.FIGHTER);
+                land.addAccessBuildWarriorType(WarriorType.CATAPULT);
+                land.addAccessBuildWarriorType(WarriorType.BALISTA);
+                land.addAccessBuildWarriorType(WarriorType.TARAN);
                 if (rollOneIn(15)) {
                     land.addAccessBuildWarriorType(WarriorType.ORC);
                 }
