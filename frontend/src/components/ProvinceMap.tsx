@@ -7,7 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { LandDto, RecruitOptionsDto, WorldDetail } from '../api/client';
-import { getMoveSourceLands, getRecruitOptions, moveWarriors, recruitWarriorsBatch } from '../api/client';
+import { getMoveTargetLands, getRecruitOptions, moveWarriors, recruitWarriorsBatch } from '../api/client';
 import {
   empireFillForPlayer,
   empireSelectionRing,
@@ -67,11 +67,12 @@ type Props = {
   onSelectLand: (landId: number | null) => void;
   onWorldRefresh?: () => Promise<void>;
   onActionMessage?: (kind: 'recruit' | 'move' | 'fog' | 'error', detail?: string) => void;
-  /** Внешний запрос открыть найм / захват с панели */
+  /** Внешний запрос открыть найм с панели */
   recruitRequestId?: number | null;
-  captureRequestId?: number | null;
   onRecruitRequestHandled?: () => void;
-  onCaptureRequestHandled?: () => void;
+  /** Инкремент — переключить режим перемещения (кнопка в TurnBar) */
+  moveModeToggleRequest?: number;
+  onMoveModeActiveChange?: (active: boolean) => void;
 };
 
 type LandContextMenuState = {
@@ -81,7 +82,10 @@ type LandContextMenuState = {
   kind: 'own' | 'neighbor';
 };
 
-type CaptureMoveState = { targetId: number; sourceIds: number[] };
+/** Источник → цели: сначала свои земли с войсками, затем соседи-цели. */
+type MoveFlowState =
+  | { phase: 'pick-source'; sourceIds: number[] }
+  | { phase: 'pick-target'; fromId: number; sourceIds: number[]; targetIds: number[] };
 
 type LandHoverTooltip = {
   x: number;
@@ -110,9 +114,9 @@ export function ProvinceMap({
   onWorldRefresh,
   onActionMessage,
   recruitRequestId,
-  captureRequestId,
   onRecruitRequestHandled,
-  onCaptureRequestHandled,
+  moveModeToggleRequest,
+  onMoveModeActiveChange,
 }: Props) {
   const [mapViewMode, setMapViewMode] = useState<MapTileViewMode>('banner');
   const [landContextMenu, setLandContextMenu] = useState<LandContextMenuState | null>(null);
@@ -124,9 +128,10 @@ export function ProvinceMap({
   const [recruitDraft, setRecruitDraft] = useState<RecruitDraftSlot[]>([]);
   const [recruitSubmitting, setRecruitSubmitting] = useState(false);
   const [recruitError, setRecruitError] = useState<string | null>(null);
-  const [captureMove, setCaptureMove] = useState<CaptureMoveState | null>(null);
-  const [captureLoading, setCaptureLoading] = useState(false);
-  const [captureInitError, setCaptureInitError] = useState<string | null>(null);
+  const [moveFlow, setMoveFlow] = useState<MoveFlowState | null>(null);
+  const [moveFlowLoading, setMoveFlowLoading] = useState(false);
+  const [moveFlowError, setMoveFlowError] = useState<string | null>(null);
+  const lastMoveToggleRequest = useRef(0);
   const [moveWarriorsModal, setMoveWarriorsModal] = useState<null | { fromId: number; toId: number }>(null);
   const [moveCounts, setMoveCounts] = useState<Record<string, number>>({});
   const [moveSubmitting, setMoveSubmitting] = useState(false);
@@ -176,8 +181,8 @@ export function ProvinceMap({
     setRecruitOptions(null);
     setSelectedRecruitType(null);
     setRecruitDraft([]);
-    setCaptureMove(null);
-    setCaptureInitError(null);
+    setMoveFlow(null);
+    setMoveFlowError(null);
     setMoveWarriorsModal(null);
     setMoveError(null);
     setHoverTooltip(null);
@@ -186,6 +191,7 @@ export function ProvinceMap({
     mapPanSession.current = null;
     suppressContextMenuRef.current = false;
     lastTurnFocusKey.current = '';
+    onMoveModeActiveChange?.(false);
   }, [world?.id]);
 
   useEffect(() => {
@@ -226,12 +232,25 @@ export function ProvinceMap({
   }, [recruitRequestId, onRecruitRequestHandled]);
 
   useEffect(() => {
-    if (captureRequestId != null) {
-      void startMoveToLand(captureRequestId);
-      onCaptureRequestHandled?.();
+    onMoveModeActiveChange?.(moveFlow != null || moveFlowError != null);
+  }, [moveFlow, moveFlowError, onMoveModeActiveChange]);
+
+  useEffect(() => {
+    clearMoveFlow();
+    setMoveWarriorsModal(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset move UX when turn changes
+  }, [turnNumber, currentPlayerId]);
+
+  useEffect(() => {
+    if (moveModeToggleRequest == null || moveModeToggleRequest === lastMoveToggleRequest.current) return;
+    lastMoveToggleRequest.current = moveModeToggleRequest;
+    if (moveFlow != null || moveFlowError != null) {
+      clearMoveFlow();
+    } else {
+      beginMoveFlow();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot from panel
-  }, [captureRequestId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- toggle signal from TurnBar
+  }, [moveModeToggleRequest]);
 
   useEffect(() => {
     if (moveWarriorsModal == null || world == null) {
@@ -372,7 +391,8 @@ export function ProvinceMap({
       landContextMenu != null ||
       fogBlockedModalOpen ||
       recruitLandId != null ||
-      captureMove != null ||
+      moveFlow != null ||
+      moveFlowError != null ||
       moveWarriorsModal != null;
     if (!needEsc) return;
     function onKey(e: KeyboardEvent) {
@@ -384,8 +404,7 @@ export function ProvinceMap({
       setRecruitError(null);
       setSelectedRecruitType(null);
       setRecruitDraft([]);
-      setCaptureMove(null);
-      setCaptureInitError(null);
+      clearMoveFlow();
       setMoveWarriorsModal(null);
       setMoveError(null);
     }
@@ -396,7 +415,8 @@ export function ProvinceMap({
     fogBlockedModalOpen,
     recruitLandId,
     recruitSubmitting,
-    captureMove,
+    moveFlow,
+    moveFlowError,
     moveWarriorsModal,
     moveSubmitting,
   ]);
@@ -513,43 +533,88 @@ export function ProvinceMap({
     }
   }
 
-  /** Цель перемещения: своя / нейтраль / враг — источники = соседние земли текущего игрока с войсками. */
-  async function startMoveToLand(targetLandId: number) {
-    if (world == null) return;
+  function clearMoveFlow() {
+    setMoveFlow(null);
+    setMoveFlowError(null);
+    setMoveFlowLoading(false);
+  }
+
+  function collectOwnLandsWithTroops(): number[] {
+    if (world?.lands == null || currentPlayerId == null) return [];
+    return world.lands
+      .filter((l) => l.player?.id === currentPlayerId)
+      .filter((l) => (l.warriors ?? []).some((w) => (w.count ?? 0) > 0))
+      .map((l) => l.id);
+  }
+
+  function beginMoveFlow() {
     setLandContextMenu(null);
-    setCaptureInitError(null);
-    setCaptureLoading(true);
+    setMoveFlowError(null);
+    const sourceIds = collectOwnLandsWithTroops();
+    if (sourceIds.length === 0) {
+      const msg = 'Нет ваших земель с войсками для перемещения.';
+      setMoveFlowError(msg);
+      onActionMessage?.('error', msg);
+      setMoveFlow(null);
+      return;
+    }
+    setMoveFlow({ phase: 'pick-source', sourceIds });
+  }
+
+  async function selectMoveSource(fromId: number, sourceIds: number[]) {
+    if (world == null) return;
+    setMoveFlowLoading(true);
+    setMoveFlowError(null);
     try {
-      const sources = await getMoveSourceLands(world.id, targetLandId);
-      const sourceIds = sources.map((s) => s.id).filter((id): id is number => id != null);
-      if (sourceIds.length === 0) {
-        setCaptureMove(null);
-        const msg = 'Нет ваших соседних земель с войсками для этого перемещения.';
-        setCaptureInitError(msg);
+      const targets = await getMoveTargetLands(world.id, fromId);
+      const targetIds = targets.map((t) => t.id).filter((id): id is number => id != null);
+      if (targetIds.length === 0) {
+        const msg = 'Нет соседних земель для перемещения с этой провинции.';
+        setMoveFlowError(msg);
         onActionMessage?.('error', msg);
+        setMoveFlow({ phase: 'pick-source', sourceIds });
         return;
       }
-      setCaptureMove({ targetId: targetLandId, sourceIds });
-      onSelectLand(targetLandId);
+      setMoveFlow({ phase: 'pick-target', fromId, sourceIds, targetIds });
+      onSelectLand(fromId);
     } catch (e) {
-      setCaptureMove(null);
       const msg = e instanceof Error ? e.message : String(e);
-      setCaptureInitError(msg);
+      setMoveFlowError(msg);
       onActionMessage?.('error', msg);
+      setMoveFlow({ phase: 'pick-source', sourceIds });
     } finally {
-      setCaptureLoading(false);
+      setMoveFlowLoading(false);
     }
   }
 
   function handleLandTileClick(land: LandDto, isFogged: boolean) {
-    if (captureMove != null && !isFogged) {
-      if (captureMove.sourceIds.includes(land.id)) {
-        setMoveWarriorsModal({ fromId: land.id, toId: captureMove.targetId });
+    if (moveFlow != null) {
+      if (isFogged) {
+        onActionMessage?.('fog');
+        return;
+      }
+      if (moveFlow.phase === 'pick-source') {
+        if (moveFlow.sourceIds.includes(land.id)) {
+          void selectMoveSource(land.id, moveFlow.sourceIds);
+        } else {
+          clearMoveFlow();
+        }
+        return;
+      }
+      // pick-target
+      if (moveFlow.sourceIds.includes(land.id)) {
+        if (land.id !== moveFlow.fromId) {
+          void selectMoveSource(land.id, moveFlow.sourceIds);
+        }
+        return;
+      }
+      if (moveFlow.targetIds.includes(land.id)) {
+        setMoveWarriorsModal({ fromId: moveFlow.fromId, toId: land.id });
         setMoveError(null);
         return;
       }
-      setCaptureMove(null);
-      setCaptureInitError(null);
+      clearMoveFlow();
+      return;
     }
     if (isFogged) {
       onActionMessage?.('fog');
@@ -584,7 +649,7 @@ export function ProvinceMap({
       await moveWarriors(world.id, moveWarriorsModal.fromId, moveWarriorsModal.toId, payload);
       await onWorldRefresh();
       setMoveWarriorsModal(null);
-      setCaptureMove(null);
+      clearMoveFlow();
       setMoveCounts({});
       onActionMessage?.('move');
     } catch (e) {
@@ -678,15 +743,20 @@ export function ProvinceMap({
         })}
       </div>
 
-      {captureLoading && <p className="fe-muted">Поиск земель с войсками…</p>}
-      {captureMove != null && (
+      {moveFlowLoading && <p className="fe-muted">Загрузка целей перемещения…</p>}
+      {moveFlow?.phase === 'pick-source' && (
         <p className="fe-muted" style={{ color: 'var(--fe-capture)', margin: 0 }}>
-          Перемещение: кликните землю с оранжевым контуром щита (откуда). Цель — фиолетовый щит. Esc —
+          Перемещение: кликните свою землю с оранжевым щитом (откуда отправить). Esc — отмена.
+        </p>
+      )}
+      {moveFlow?.phase === 'pick-target' && (
+        <p className="fe-muted" style={{ color: 'var(--fe-capture)', margin: 0 }}>
+          Перемещение: фиолетовый щит — куда можно отправить; оранжевый — сменить источник. Esc —
           отмена.
         </p>
       )}
-      {captureInitError != null && (
-        <p style={{ color: 'var(--fe-danger)', margin: 0, fontSize: '0.82rem' }}>{captureInitError}</p>
+      {moveFlowError != null && (
+        <p style={{ color: 'var(--fe-danger)', margin: 0, fontSize: '0.82rem' }}>{moveFlowError}</p>
       )}
 
       <p className="fe-muted" style={{ margin: 0, fontSize: '0.75rem' }}>
@@ -823,15 +893,17 @@ export function ProvinceMap({
                   pid != null
                     ? empireFillForPlayer(pid, empirePlayerIds, playerLandBackgroundFromId(pid))
                     : null;
-                const isCaptureSource = captureMove != null && captureMove.sourceIds.includes(land.id);
-                const isCaptureTarget = captureMove != null && land.id === captureMove.targetId;
+                const isMoveSource =
+                  moveFlow != null && moveFlow.sourceIds.includes(land.id);
+                const isMoveTarget =
+                  moveFlow?.phase === 'pick-target' && moveFlow.targetIds.includes(land.id);
                 const selectedOwnRing =
                   isSelected && empireSlot != null ? empireSelectionRing(empireSlot) : null;
                 const shieldFocus = resolveShieldFocusColor({
-                  isCaptureSource,
-                  isCaptureTarget,
-                  isSelected,
-                  selectedOwnRing,
+                  isCaptureSource: isMoveSource,
+                  isCaptureTarget: isMoveTarget,
+                  isSelected: isSelected && moveFlow == null,
+                  selectedOwnRing: moveFlow == null ? selectedOwnRing : null,
                 });
                 /* Клетка без квадратных рамок состояний — только лёгкий край / туман */
                 const borderColor = isFogged
@@ -1038,36 +1110,18 @@ export function ProvinceMap({
               >
                 Нанять
               </button>
-              <button
-                type="button"
-                role="menuitem"
-                disabled={captureLoading}
-                onClick={() => void startMoveToLand(landContextMenu.landId)}
-              >
-                Переместить сюда
-              </button>
             </>
           ) : (
-            <>
-              <button
-                type="button"
-                role="menuitem"
-                disabled={captureLoading}
-                onClick={() => void startMoveToLand(landContextMenu.landId)}
-              >
-                Захватить
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  onSelectLand(landContextMenu.landId);
-                  setLandContextMenu(null);
-                }}
-              >
-                Инфо
-              </button>
-            </>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onSelectLand(landContextMenu.landId);
+                setLandContextMenu(null);
+              }}
+            >
+              Инфо
+            </button>
           )}
         </div>
       )}

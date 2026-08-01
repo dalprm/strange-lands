@@ -182,9 +182,14 @@ export function moveWarriors(
   });
 }
 
-/** Земли текущего игрока — соседи цели, с войсками (сервер проверяет ход). */
+/** Земли текущего игрока — соседи цели, с войсками (legacy: цель → источники). */
 export function getMoveSourceLands(worldId: number, toLandId: number): Promise<LandDto[]> {
   return fetchJson<LandDto[]>(`/api/worlds/${worldId}/lands/${toLandId}/move-sources`);
+}
+
+/** Соседи земли-источника — куда можно переместить (сервер проверяет ход и владельца). */
+export function getMoveTargetLands(worldId: number, fromLandId: number): Promise<LandDto[]> {
+  return fetchJson<LandDto[]>(`/api/worlds/${worldId}/lands/${fromLandId}/move-targets`);
 }
 
 /** Постройка здания на земле. */

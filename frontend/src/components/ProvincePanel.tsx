@@ -26,7 +26,6 @@ type Props = {
   loading?: boolean;
   busy?: boolean;
   onRecruit: (landId: number) => void;
-  onCapture: (landId: number) => void;
   onBuild: (landId: number, buildingType: string, wallLevel?: number) => void;
 };
 
@@ -37,7 +36,6 @@ export function ProvincePanel({
   loading,
   busy,
   onRecruit,
-  onCapture,
   onBuild,
 }: Props) {
   if (loading && world == null) {
@@ -58,7 +56,6 @@ export function ProvincePanel({
 
   const owner = landOwnerLabel(land);
   const isOwn = currentPlayerId != null && land.player?.id === currentPlayerId;
-  const isEnemyOrNeutral = currentPlayerId != null && land.player?.id !== currentPlayerId;
   const neighborIds = world?.neighbors?.[String(land.id)];
   const buildingLines = buildingSummaryLines(land.buildings);
   const warriorsList = land.warriors?.filter((w) => (w.count ?? 0) > 0) ?? [];
@@ -201,25 +198,7 @@ export function ProvincePanel({
               >
                 Нанять войска
               </button>
-              <button
-                type="button"
-                className="fe-btn"
-                disabled={busy}
-                onClick={() => onCapture(land.id)}
-              >
-                Переместить войска сюда
-              </button>
             </>
-          )}
-          {isEnemyOrNeutral && (
-            <button
-              type="button"
-              className="fe-btn fe-btn-danger"
-              disabled={busy}
-              onClick={() => onCapture(land.id)}
-            >
-              Захватить / перебросить войска
-            </button>
           )}
         </div>
       )}

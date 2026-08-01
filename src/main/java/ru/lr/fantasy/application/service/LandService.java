@@ -73,6 +73,21 @@ public class LandService implements LandUseCase {
     }
 
     @Override
+    public List<Land> listMoveTargetLandsForCurrentTurn(Long worldId, Long fromLandId) {
+        World world = getWorld(worldId);
+        Land fromLand = world.getLand(fromLandId);
+        if (fromLand == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Земля не найдена: " + fromLandId);
+        }
+        assertLandOwnerIsCurrentPlayer(world, fromLand);
+        boolean hasTroops = fromLand.getWarriors().stream().anyMatch(w -> w.getCount() > 0);
+        if (!hasTroops) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "На земле нет войск для перемещения");
+        }
+        return fromLand.getNeighboring().stream().sorted().toList();
+    }
+
+    @Override
     public void buildBuilding(Long worldId, Long landId, Building building) {
         World world = getWorld(worldId);
         Land land = world.getLand(landId);

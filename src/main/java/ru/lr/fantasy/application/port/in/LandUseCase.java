@@ -14,8 +14,11 @@ public interface LandUseCase {
     List<Land> getLands(Long worldId);
     List<Land> getNeighboringLands(Long worldId, Long landId);
 
-    /** Земли ходящего игрока, соседние с целевой клеткой и с войсками (для перемещения / захвата). */
+    /** Земли ходящего игрока, соседние с целевой клеткой и с войсками (legacy: цель → источники). */
     List<Land> listMoveSourceLandsForCurrentTurn(Long worldId, Long toLandId);
+
+    /** Соседи земли-источника (своя с войсками, ход текущего игрока) — куда можно переместить. */
+    List<Land> listMoveTargetLandsForCurrentTurn(Long worldId, Long fromLandId);
 
     void buildBuilding(Long worldId, Long landId, Building building);
     void recruitWarriors(Long worldId, Long landId, WarriorType warriorType, int count, int turnCount);

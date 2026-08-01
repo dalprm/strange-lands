@@ -40,6 +40,13 @@ public class LandController {
         return ResponseEntity.ok(landUseCase.listMoveSourceLandsForCurrentTurn(worldId, landId));
     }
 
+    @GetMapping("/{landId}/move-targets")
+    public ResponseEntity<List<Land>> listMoveTargetLandsForCurrentTurn(
+            @PathVariable Long worldId,
+            @PathVariable Long landId) {
+        return ResponseEntity.ok(landUseCase.listMoveTargetLandsForCurrentTurn(worldId, landId));
+    }
+
     @GetMapping("/{landId}")
     public ResponseEntity<Land> getLand(@PathVariable Long worldId, @PathVariable Long landId) {
         return ResponseEntity.ok(landUseCase.getLand(worldId, landId));

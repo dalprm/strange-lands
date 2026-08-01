@@ -7,11 +7,22 @@ type Props = {
   players: Player[];
   world: WorldDetail | null;
   loading?: boolean;
+  moveModeActive?: boolean;
+  onMoveTroops?: () => void;
   onEndTurn: () => void;
   onBackToLobby: () => void;
 };
 
-export function TurnBar({ turn, players, world, loading, onEndTurn, onBackToLobby }: Props) {
+export function TurnBar({
+  turn,
+  players,
+  world,
+  loading,
+  moveModeActive,
+  onMoveTroops,
+  onEndTurn,
+  onBackToLobby,
+}: Props) {
   const cur =
     turn?.currentPlayerId != null ? players.find((p) => p.id === turn.currentPlayerId) : undefined;
   const who =
@@ -62,6 +73,15 @@ export function TurnBar({ turn, players, world, loading, onEndTurn, onBackToLobb
         )}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+        <button
+          type="button"
+          className={moveModeActive ? 'fe-btn fe-btn-primary' : 'fe-btn'}
+          disabled={loading || turn == null || onMoveTroops == null}
+          onClick={onMoveTroops}
+          style={moveModeActive ? { borderColor: 'var(--fe-capture)' } : undefined}
+        >
+          {moveModeActive ? 'Отменить перемещение' : 'Переместить'}
+        </button>
         <button type="button" className="fe-btn fe-btn-primary" disabled={loading || turn == null} onClick={onEndTurn}>
           Завершить ход
         </button>

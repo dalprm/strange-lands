@@ -34,7 +34,8 @@ export function PartyScreen({ worldId, players, onBackToLobby }: Props) {
   const [selectedLandId, setSelectedLandId] = useState<number | null>(null);
   const [dm, setDm] = useState<DmMessage | null>(() => dmWelcome());
   const [recruitRequestId, setRecruitRequestId] = useState<number | null>(null);
-  const [captureRequestId, setCaptureRequestId] = useState<number | null>(null);
+  const [moveModeToggleRequest, setMoveModeToggleRequest] = useState(0);
+  const [moveModeActive, setMoveModeActive] = useState(false);
   const lastTurnKey = useRef<string>('');
 
   const refresh = useCallback(async () => {
@@ -152,9 +153,9 @@ export function PartyScreen({ worldId, players, onBackToLobby }: Props) {
           onWorldRefresh={refresh}
           onActionMessage={handleMapAction}
           recruitRequestId={recruitRequestId}
-          captureRequestId={captureRequestId}
           onRecruitRequestHandled={() => setRecruitRequestId(null)}
-          onCaptureRequestHandled={() => setCaptureRequestId(null)}
+          moveModeToggleRequest={moveModeToggleRequest}
+          onMoveModeActiveChange={setMoveModeActive}
         />
       </main>
       <aside
@@ -174,6 +175,8 @@ export function PartyScreen({ worldId, players, onBackToLobby }: Props) {
           players={players}
           world={world}
           loading={busy || loading}
+          moveModeActive={moveModeActive}
+          onMoveTroops={() => setMoveModeToggleRequest((n) => n + 1)}
           onEndTurn={() => void handleEndTurn()}
           onBackToLobby={onBackToLobby}
         />
@@ -185,7 +188,6 @@ export function PartyScreen({ worldId, players, onBackToLobby }: Props) {
           loading={loading}
           busy={busy}
           onRecruit={(id) => setRecruitRequestId(id)}
-          onCapture={(id) => setCaptureRequestId(id)}
           onBuild={(id, type, wall) => void handleBuild(id, type, wall)}
         />
       </aside>
