@@ -1,5 +1,10 @@
 import type { LandDto, WorldDetail } from '../api/client';
 import {
+  empireFillForPlayer,
+  empireSlotForPlayer,
+  orderedEmpirePlayerIds,
+} from '../land/heraldry';
+import {
   availableBuildActions,
   buildingSummaryLines,
   formatWarriorLine,
@@ -12,6 +17,7 @@ import {
   warriorTypeLabel,
 } from '../land/helpers';
 import { BarrackGlyph, CastleGlyph, WallGlyph } from './icons';
+import { BannerShield } from './ProvinceShield';
 
 type Props = {
   world: WorldDetail | null;
@@ -62,6 +68,15 @@ export function ProvincePanel({
   const wallCaption = landWallLevelDisplay(land.buildings);
   const barrackCount = landBarrackCount(land.buildings);
   const buildActions = availableBuildActions(land.buildings);
+  const empireIds = orderedEmpirePlayerIds(
+    (world?.lands ?? []).map((l) => l.player?.id).filter((id): id is number => id != null),
+  );
+  const ownerSlot =
+    land.player?.id != null ? empireSlotForPlayer(land.player.id, empireIds) : null;
+  const ownerColor =
+    land.player != null
+      ? empireFillForPlayer(land.player.id, empireIds, playerLandBackgroundFromId(land.player.id))
+      : null;
 
   return (
     <div className="fe-frame" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
@@ -70,12 +85,23 @@ export function ProvincePanel({
           Провинция #{land.id}
           {land.name ? ` · ${land.name}` : ''}
         </div>
-        <div style={{ marginTop: '0.35rem', fontSize: '0.88rem' }}>
+        <div
+          style={{
+            marginTop: '0.35rem',
+            fontSize: '0.88rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+          }}
+        >
           {land.player ? (
-            <strong style={{ color: playerLandBackgroundFromId(land.player.id) }}>
-              {owner}
-              {land.player.level != null ? ` · ур. ${land.player.level}` : ''}
-            </strong>
+            <>
+              {ownerSlot != null && <BannerShield slot={ownerSlot} size={22} />}
+              <strong style={{ color: ownerColor ?? playerLandBackgroundFromId(land.player.id) }}>
+                {owner}
+                {land.player.level != null ? ` · ур. ${land.player.level}` : ''}
+              </strong>
+            </>
           ) : (
             <span className="fe-muted">Нейтральная земля</span>
           )}
@@ -174,6 +200,14 @@ export function ProvincePanel({
                 onClick={() => onRecruit(land.id)}
               >
                 Нанять войска
+              </button>
+              <button
+                type="button"
+                className="fe-btn"
+                disabled={busy}
+                onClick={() => onCapture(land.id)}
+              >
+                Переместить войска сюда
               </button>
             </>
           )}

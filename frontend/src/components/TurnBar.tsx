@@ -1,4 +1,6 @@
 import type { Player, Turn, WorldDetail } from '../api/client';
+import { empireSlotForPlayer, orderedEmpirePlayerIds } from '../land/heraldry';
+import { BannerShield } from './ProvinceShield';
 
 type Props = {
   turn: Turn | null;
@@ -20,6 +22,11 @@ export function TurnBar({ turn, players, world, loading, onEndTurn, onBackToLobb
         : 'нет владельцев';
   const goldKey = turn?.currentPlayerId != null ? String(turn.currentPlayerId) : null;
   const gold = goldKey != null ? (world?.playerWorldResources?.[goldKey]?.gold ?? 0) : null;
+  const empireIds = orderedEmpirePlayerIds(
+    (world?.lands ?? []).map((l) => l.player?.id).filter((id): id is number => id != null),
+  );
+  const currentSlot =
+    turn?.currentPlayerId != null ? empireSlotForPlayer(turn.currentPlayerId, empireIds) : null;
 
   return (
     <div className="fe-frame" style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
@@ -48,7 +55,11 @@ export function TurnBar({ turn, players, world, loading, onEndTurn, onBackToLobb
             )}
           </div>
         </div>
-        <img src="/ui/shield.svg" alt="" width={28} height={34} />
+        {currentSlot != null ? (
+          <BannerShield slot={currentSlot} size={32} title={`Щит: ${who}`} />
+        ) : (
+          <BannerShield slot={0} size={32} />
+        )}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
         <button type="button" className="fe-btn fe-btn-primary" disabled={loading || turn == null} onClick={onEndTurn}>

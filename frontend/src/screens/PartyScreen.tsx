@@ -145,6 +145,7 @@ export function PartyScreen({ worldId, players, onBackToLobby }: Props) {
         <ProvinceMap
           world={world}
           currentPlayerId={turn?.currentPlayerId ?? null}
+          turnNumber={turn?.turnNumber ?? null}
           selectedLandId={selectedLandId}
           loading={loading}
           onSelectLand={handleSelectLand}

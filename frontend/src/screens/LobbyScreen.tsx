@@ -3,6 +3,9 @@ import type { Player, World } from '../api/client';
 
 const MIN_WORLD = 2;
 const MAX_WORLD = 64;
+/** Fantasy Empires (Mystara): 98 территорий → сетка 7×14. */
+const DEFAULT_WORLD_X = 7;
+const DEFAULT_WORLD_Y = 14;
 
 function clampWorldSize(n: number): number {
   if (!Number.isFinite(n)) return MIN_WORLD;
@@ -38,8 +41,8 @@ export function LobbyScreen({
   onRefresh,
   onEnterParty,
 }: Props) {
-  const [sizeXInput, setSizeXInput] = useState('4');
-  const [sizeYInput, setSizeYInput] = useState('4');
+  const [sizeXInput, setSizeXInput] = useState(String(DEFAULT_WORLD_X));
+  const [sizeYInput, setSizeYInput] = useState(String(DEFAULT_WORLD_Y));
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerLevel, setNewPlayerLevel] = useState('1');
   const [includeInNewWorld, setIncludeInNewWorld] = useState<Set<number>>(new Set());
@@ -47,8 +50,9 @@ export function LobbyScreen({
   const [attachPlayerId, setAttachPlayerId] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const effectiveSizeX = clampWorldSize(parseOptionalSize(sizeXInput) ?? MIN_WORLD);
-  const effectiveSizeY = clampWorldSize(parseOptionalSize(sizeYInput) ?? MIN_WORLD);
+  const effectiveSizeX = clampWorldSize(parseOptionalSize(sizeXInput) ?? DEFAULT_WORLD_X);
+  const effectiveSizeY = clampWorldSize(parseOptionalSize(sizeYInput) ?? DEFAULT_WORLD_Y);
+  const landCount = effectiveSizeX * effectiveSizeY;
   const displayError = localError ?? error;
 
   function toggleIncludePlayer(id: number) {
@@ -79,8 +83,8 @@ export function LobbyScreen({
 
   async function handleCreateWorld() {
     setLocalError(null);
-    const sx = clampWorldSize(parseOptionalSize(sizeXInput) ?? MIN_WORLD);
-    const sy = clampWorldSize(parseOptionalSize(sizeYInput) ?? MIN_WORLD);
+    const sx = clampWorldSize(parseOptionalSize(sizeXInput) ?? DEFAULT_WORLD_X);
+    const sy = clampWorldSize(parseOptionalSize(sizeYInput) ?? DEFAULT_WORLD_Y);
     setSizeXInput(String(sx));
     setSizeYInput(String(sy));
     const ids = players.filter((p) => includeInNewWorld.has(p.id)).map((p) => p.id);
@@ -201,12 +205,13 @@ export function LobbyScreen({
               />
             </label>
             <button type="button" className="fe-btn fe-btn-primary" disabled={loading} onClick={() => void handleCreateWorld()}>
-              Создать {effectiveSizeX}×{effectiveSizeY}
+              Создать {effectiveSizeX}×{effectiveSizeY} · {landCount} земель
               {includeInNewWorld.size > 0 ? ` · ${includeInNewWorld.size}` : ''}
             </button>
           </div>
           <p className="fe-muted" style={{ margin: '0.65rem 0 0' }}>
-            Отмеченные правители получат стартовые земли.
+            По умолчанию 7×14 = 98 земель (как в Fantasy Empires / Mystara). Отмеченные
+            правители получат стартовые земли.
           </p>
         </section>
       </div>

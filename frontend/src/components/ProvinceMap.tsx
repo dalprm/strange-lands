@@ -1,6 +1,19 @@
-import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import type { LandDto, RecruitOptionsDto, WorldDetail } from '../api/client';
 import { getMoveSourceLands, getRecruitOptions, moveWarriors, recruitWarriorsBatch } from '../api/client';
+import {
+  empireFillForPlayer,
+  empireSelectionRing,
+  empireSlotForPlayer,
+  orderedEmpirePlayerIds,
+} from '../land/heraldry';
 import {
   FOG_BLOCKED_MESSAGE,
   collectPlayersForLegend,
@@ -19,13 +32,36 @@ import {
   buildDecorLayout,
   buildTerrainLayout,
 } from '../land/terrainTiles';
-import { BarrackGlyphTileWithCount, CastleGlyph, FogOfWarOverlay, WallGlyph } from './icons';
+import { FogOfWarOverlay } from './icons';
+import {
+  BannerShield,
+  ContentsShield,
+  EmptyShieldOutline,
+  LegendBannerShield,
+  resolveShieldFocusColor,
+} from './ProvinceShield';
 
-type MapTileViewMode = 'economy' | 'buildings';
+/** banner = щит империи; contents = здания и войска внутри щита */
+type MapTileViewMode = 'banner' | 'contents';
+
+/**
+ * Масштаб провинции ближе к FE: в VGA (~640×480) в окне карты было ~8–10 провинций,
+ * щит занимал заметную долю клетки. На современных экранах — фиксированный px, не «впихнуть всё».
+ */
+const PROVINCE_TILE_PX = 120;
+const MAP_FRAME_X_PX = 36;
+const MAP_FRAME_TOP_PX = 36;
+const MAP_FRAME_BOTTOM_PX = 44;
+const SHIELD_BANNER_PX = 88;
+/** Почти на всю клетку — чтобы сетка 2-2-2-1 читалась с равным шагом. */
+const SHIELD_CONTENTS_PX = 108;
+const PAN_DRAG_THRESHOLD_PX = 6;
 
 type Props = {
   world: WorldDetail | null;
   currentPlayerId: number | null;
+  /** Меняется при смене хода — карта фокусируется на земле активного игрока */
+  turnNumber?: number | null;
   selectedLandId: number | null;
   loading?: boolean;
   onSelectLand: (landId: number | null) => void;
@@ -67,6 +103,7 @@ let recruitDraftSeq = 0;
 export function ProvinceMap({
   world,
   currentPlayerId,
+  turnNumber,
   selectedLandId,
   loading,
   onSelectLand,
@@ -77,7 +114,7 @@ export function ProvinceMap({
   onRecruitRequestHandled,
   onCaptureRequestHandled,
 }: Props) {
-  const [mapViewMode, setMapViewMode] = useState<MapTileViewMode>('economy');
+  const [mapViewMode, setMapViewMode] = useState<MapTileViewMode>('banner');
   const [landContextMenu, setLandContextMenu] = useState<LandContextMenuState | null>(null);
   const [fogBlockedModalOpen, setFogBlockedModalOpen] = useState(false);
   const [recruitLandId, setRecruitLandId] = useState<number | null>(null);
@@ -95,6 +132,19 @@ export function ProvinceMap({
   const [moveSubmitting, setMoveSubmitting] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [hoverTooltip, setHoverTooltip] = useState<LandHoverTooltip | null>(null);
+  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
+  const [mapPanning, setMapPanning] = useState(false);
+  const mapViewportRef = useRef<HTMLDivElement | null>(null);
+  const mapPanSession = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressContextMenuRef = useRef(false);
+  const lastTurnFocusKey = useRef<string>('');
 
   const fogVisibleLandIds = useMemo(() => {
     if (world == null || !world.lands?.length || currentPlayerId == null) return null;
@@ -118,7 +168,7 @@ export function ProvinceMap({
   }, [world]);
 
   useEffect(() => {
-    setMapViewMode('economy');
+    setMapViewMode('banner');
     setLandContextMenu(null);
     setFogBlockedModalOpen(false);
     setRecruitLandId(null);
@@ -131,7 +181,41 @@ export function ProvinceMap({
     setMoveWarriorsModal(null);
     setMoveError(null);
     setHoverTooltip(null);
+    setMapPan({ x: 0, y: 0 });
+    setMapPanning(false);
+    mapPanSession.current = null;
+    suppressContextMenuRef.current = false;
+    lastTurnFocusKey.current = '';
   }, [world?.id]);
+
+  useEffect(() => {
+    if (world?.size == null || !world.lands?.length) return;
+    const focusKey = `${world.id}:${turnNumber ?? ''}:${currentPlayerId ?? 'none'}`;
+    if (focusKey === lastTurnFocusKey.current) return;
+
+    const cols = world.size.height;
+    const rows = world.size.width;
+    const mapW = cols * PROVINCE_TILE_PX + MAP_FRAME_X_PX * 2;
+    const mapH = rows * PROVINCE_TILE_PX + MAP_FRAME_TOP_PX + MAP_FRAME_BOTTOM_PX;
+
+    const id = window.requestAnimationFrame(() => {
+      lastTurnFocusKey.current = focusKey;
+      if (currentPlayerId == null) {
+        centerMapPan(mapW, mapH);
+        return;
+      }
+      const landIndex = world.lands!.findIndex((l) => l.player?.id === currentPlayerId);
+      if (landIndex < 0) {
+        centerMapPan(mapW, mapH);
+        return;
+      }
+      const land = world.lands![landIndex]!;
+      focusLandIndex(landIndex, cols, mapW, mapH);
+      onSelectLand(land.id);
+    });
+    return () => window.cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focus on turn / world geometry
+  }, [world?.id, world?.size?.width, world?.size?.height, turnNumber, currentPlayerId]);
 
   useEffect(() => {
     if (recruitRequestId != null) {
@@ -143,7 +227,7 @@ export function ProvinceMap({
 
   useEffect(() => {
     if (captureRequestId != null) {
-      void startCaptureFromContext(captureRequestId);
+      void startMoveToLand(captureRequestId);
       onCaptureRequestHandled?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot from panel
@@ -318,8 +402,12 @@ export function ProvinceMap({
   ]);
 
   function handleLandContextMenu(e: ReactMouseEvent, land: LandDto, isFogged: boolean) {
-    if (currentPlayerId == null) return;
     e.preventDefault();
+    if (suppressContextMenuRef.current || mapPanSession.current?.moved) {
+      suppressContextMenuRef.current = false;
+      return;
+    }
+    if (currentPlayerId == null) return;
     setLandContextMenu(null);
     if (isFogged) {
       setFogBlockedModalOpen(true);
@@ -334,7 +422,99 @@ export function ProvinceMap({
     }
   }
 
-  async function startCaptureFromContext(targetLandId: number) {
+  function clampMapPan(x: number, y: number, mapW: number, mapH: number) {
+    const view = mapViewportRef.current?.getBoundingClientRect();
+    if (view == null || view.width < 8 || view.height < 8) return { x, y };
+    const pad = 48;
+    // Keep at least `pad` of the map inside the viewport.
+    const loX = view.width - mapW - pad;
+    const hiX = pad;
+    const loY = view.height - mapH - pad;
+    const hiY = pad;
+    return {
+      x: Math.min(hiX, Math.max(loX, x)),
+      y: Math.min(hiY, Math.max(loY, y)),
+    };
+  }
+
+  function centerMapPan(mapW: number, mapH: number) {
+    const view = mapViewportRef.current?.getBoundingClientRect();
+    if (view == null) {
+      setMapPan({ x: 0, y: 0 });
+      return;
+    }
+    setMapPan(
+      clampMapPan((view.width - mapW) / 2, (view.height - mapH) / 2, mapW, mapH),
+    );
+  }
+
+  /** Центрирует viewport на провинции (индекс в lands = row-major). */
+  function focusLandIndex(landIndex: number, cols: number, mapW: number, mapH: number) {
+    const view = mapViewportRef.current?.getBoundingClientRect();
+    if (view == null) {
+      setMapPan({ x: 0, y: 0 });
+      return;
+    }
+    const pc = landIndex % cols;
+    const pr = Math.floor(landIndex / cols);
+    const landCenterX = MAP_FRAME_X_PX + pc * PROVINCE_TILE_PX + PROVINCE_TILE_PX / 2;
+    const landCenterY = MAP_FRAME_TOP_PX + pr * PROVINCE_TILE_PX + PROVINCE_TILE_PX / 2;
+    setMapPan(
+      clampMapPan(view.width / 2 - landCenterX, view.height / 2 - landCenterY, mapW, mapH),
+    );
+  }
+
+  function onMapViewportPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (e.button !== 2) return;
+    e.preventDefault();
+    setHoverTooltip(null);
+    setLandContextMenu(null);
+    suppressContextMenuRef.current = false;
+    mapPanSession.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: mapPan.x,
+      origY: mapPan.y,
+      moved: false,
+    };
+    setMapPanning(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+
+  function onMapViewportPointerMove(e: ReactPointerEvent<HTMLDivElement>, mapW: number, mapH: number) {
+    const session = mapPanSession.current;
+    if (session == null || session.pointerId !== e.pointerId) return;
+    const dx = e.clientX - session.startX;
+    const dy = e.clientY - session.startY;
+    if (!session.moved && dx * dx + dy * dy >= PAN_DRAG_THRESHOLD_PX * PAN_DRAG_THRESHOLD_PX) {
+      session.moved = true;
+      suppressContextMenuRef.current = true;
+    }
+    if (!session.moved) return;
+    setMapPan(clampMapPan(session.origX + dx, session.origY + dy, mapW, mapH));
+  }
+
+  function onMapViewportPointerUp(e: ReactPointerEvent<HTMLDivElement>) {
+    const session = mapPanSession.current;
+    if (session == null || session.pointerId !== e.pointerId) return;
+    if (session.moved) {
+      suppressContextMenuRef.current = true;
+      window.setTimeout(() => {
+        suppressContextMenuRef.current = false;
+      }, 0);
+    }
+    mapPanSession.current = null;
+    setMapPanning(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+  }
+
+  /** Цель перемещения: своя / нейтраль / враг — источники = соседние земли текущего игрока с войсками. */
+  async function startMoveToLand(targetLandId: number) {
     if (world == null) return;
     setLandContextMenu(null);
     setCaptureInitError(null);
@@ -444,78 +624,115 @@ export function ProvinceMap({
   const cols = world.size.height;
   const lands = world.lands;
   const legendPlayers = collectPlayersForLegend(lands);
+  const empirePlayerIds = orderedEmpirePlayerIds(legendPlayers.map((p) => p.id));
+  const playW = cols * PROVINCE_TILE_PX;
+  const playH = rows * PROVINCE_TILE_PX;
+  const mapPixelW = MAP_FRAME_X_PX * 2 + playW;
+  const mapPixelH = MAP_FRAME_TOP_PX + MAP_FRAME_BOTTOM_PX + playH;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', height: '100%', minHeight: 0 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
-        <span className="fe-muted">Просмотр:</span>
+        <span className="fe-muted">Щиты:</span>
         <button
           type="button"
           className="fe-btn"
-          aria-pressed={mapViewMode === 'economy'}
-          style={mapViewMode === 'economy' ? { borderColor: 'var(--fe-accent)' } : undefined}
-          onClick={() => setMapViewMode('economy')}
+          aria-pressed={mapViewMode === 'banner'}
+          style={mapViewMode === 'banner' ? { borderColor: 'var(--fe-accent)' } : undefined}
+          onClick={() => setMapViewMode('banner')}
         >
-          Экономика
+          Империя
         </button>
         <button
           type="button"
           className="fe-btn"
-          aria-pressed={mapViewMode === 'buildings'}
-          style={mapViewMode === 'buildings' ? { borderColor: 'var(--fe-accent)' } : undefined}
-          onClick={() => setMapViewMode('buildings')}
+          aria-pressed={mapViewMode === 'contents'}
+          style={mapViewMode === 'contents' ? { borderColor: 'var(--fe-accent)' } : undefined}
+          onClick={() => setMapViewMode('contents')}
         >
-          Здания
+          Здания и войска
         </button>
-        {legendPlayers.map((p) => (
-          <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem' }}>
+        {legendPlayers.map((p) => {
+          const slot = empireSlotForPlayer(p.id, empirePlayerIds);
+          return (
             <span
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 2,
-                border: '1px solid var(--fe-accent-dim)',
-                background: playerLandBackgroundFromId(p.id),
-              }}
-            />
-            #{p.id} {p.name ?? ''}
-          </span>
-        ))}
+              key={p.id}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem' }}
+            >
+              {slot != null ? (
+                <LegendBannerShield slot={slot} size={18} />
+              ) : (
+                <span
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 2,
+                    border: '1px solid var(--fe-accent-dim)',
+                    background: playerLandBackgroundFromId(p.id),
+                  }}
+                />
+              )}
+              #{p.id} {p.name ?? ''}
+            </span>
+          );
+        })}
       </div>
 
-      {captureLoading && <p className="fe-muted">Проверка земель для захвата…</p>}
+      {captureLoading && <p className="fe-muted">Поиск земель с войсками…</p>}
       {captureMove != null && (
         <p className="fe-muted" style={{ color: 'var(--fe-capture)', margin: 0 }}>
-          Захват: кликните клетку с оранжевой рамкой (источник). Цель — фиолетовая. Esc — отмена.
+          Перемещение: кликните землю с оранжевым контуром щита (откуда). Цель — фиолетовый щит. Esc —
+          отмена.
         </p>
       )}
       {captureInitError != null && (
         <p style={{ color: 'var(--fe-danger)', margin: 0, fontSize: '0.82rem' }}>{captureInitError}</p>
       )}
 
+      <p className="fe-muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+        ПКМ + перетаскивание — двигать карту · короткий ПКМ — меню провинции · ЛКМ — выбрать
+      </p>
+
       <div
+        ref={mapViewportRef}
+        className="fe-map-viewport"
         style={{
           flex: 1,
           minHeight: 0,
-          overflow: 'auto',
+          overflow: 'hidden',
           padding: '0.35rem',
           background: 'var(--fe-bg-map)',
           border: '2px solid var(--fe-accent-dim)',
           borderRadius: 'var(--fe-radius)',
+          cursor: mapPanning ? 'grabbing' : 'grab',
+          touchAction: 'none',
+          userSelect: 'none',
         }}
+        onPointerDown={onMapViewportPointerDown}
+        onPointerMove={(e) => onMapViewportPointerMove(e, mapPixelW, mapPixelH)}
+        onPointerUp={onMapViewportPointerUp}
+        onPointerCancel={onMapViewportPointerUp}
+        onContextMenu={(e) => e.preventDefault()}
       >
+        <div
+          className="fe-map-pan-layer"
+          style={{
+            transform: `translate(${mapPan.x}px, ${mapPan.y}px)`,
+            width: mapPixelW,
+            height: mapPixelH,
+            willChange: 'transform',
+          }}
+        >
         <div
           className="fe-map-island"
           style={{
-            maxWidth: `min(${cols * 96}px, 100%)`,
-            aspectRatio: `${cols} / ${rows}`,
+            width: mapPixelW,
+            height: mapPixelH,
             backgroundImage: `url(${MAP_FRAME_TILES.water})`,
             display: 'grid',
-            // Тонкая рамка в px — не fr, иначе края больше поля
-            gridTemplateColumns: '28px 1fr 28px',
-            gridTemplateRows: '28px 1fr 36px',
+            gridTemplateColumns: `${MAP_FRAME_X_PX}px ${playW}px ${MAP_FRAME_X_PX}px`,
+            gridTemplateRows: `${MAP_FRAME_TOP_PX}px ${playH}px ${MAP_FRAME_BOTTOM_PX}px`,
             gap: 0,
-            width: '100%',
           }}
         >
           <div aria-hidden className="fe-map-frame-cell" style={{ backgroundImage: `url(${MAP_FRAME_TILES.tl})` }} />
@@ -599,28 +816,29 @@ export function ProvinceMap({
             >
               {lands.map((land, landIndex) => {
                 const pid = land.player?.id ?? null;
-                const isCurrentTurn = currentPlayerId != null && pid === currentPlayerId;
                 const isSelected = selectedLandId === land.id;
                 const isFogged = fogVisibleLandIds != null && !fogVisibleLandIds.has(land.id);
-                let borderColor = isFogged
-                  ? 'rgba(40, 32, 20, 0.55)'
-                  : isCurrentTurn
-                    ? 'var(--fe-turn)'
-                    : pid != null
-                      ? playerLandBackgroundFromId(pid)
-                      : 'rgba(201, 162, 39, 0.28)';
-                let borderWidth = isFogged ? 1 : isCurrentTurn || pid != null ? 2 : 1;
+                const empireSlot = pid != null ? empireSlotForPlayer(pid, empirePlayerIds) : null;
+                const empireFill =
+                  pid != null
+                    ? empireFillForPlayer(pid, empirePlayerIds, playerLandBackgroundFromId(pid))
+                    : null;
                 const isCaptureSource = captureMove != null && captureMove.sourceIds.includes(land.id);
                 const isCaptureTarget = captureMove != null && land.id === captureMove.targetId;
-                if (captureMove != null) {
-                  if (isCaptureSource) {
-                    borderWidth = 3;
-                    borderColor = 'var(--fe-capture)';
-                  } else if (isCaptureTarget) {
-                    borderWidth = 3;
-                    borderColor = 'var(--fe-target)';
-                  }
-                }
+                const selectedOwnRing =
+                  isSelected && empireSlot != null ? empireSelectionRing(empireSlot) : null;
+                const shieldFocus = resolveShieldFocusColor({
+                  isCaptureSource,
+                  isCaptureTarget,
+                  isSelected,
+                  selectedOwnRing,
+                });
+                /* Клетка без квадратных рамок состояний — только лёгкий край / туман */
+                const borderColor = isFogged
+                  ? 'rgba(40, 32, 20, 0.55)'
+                  : 'rgba(201, 162, 39, 0.18)';
+                const borderWidth = 1;
+                const shieldSize = mapViewMode === 'contents' ? SHIELD_CONTENTS_PX : SHIELD_BANNER_PX;
                 const ownerLabel = landOwnerLabel(land);
                 const recruitTypesLocal = land.accessBuildWarriorTypes ?? [];
                 const recruitText =
@@ -660,7 +878,7 @@ export function ProvinceMap({
                     ].filter((x): x is string => x != null);
 
                 const showTip = (e: ReactMouseEvent) => {
-                  if (landContextMenu != null) return;
+                  if (landContextMenu != null || mapPanning) return;
                   const pad = 12;
                   const x = Math.min(e.clientX + pad, window.innerWidth - 260);
                   const y = Math.min(e.clientY + pad, window.innerHeight - 140);
@@ -671,13 +889,14 @@ export function ProvinceMap({
                   <button
                     key={land.id}
                     type="button"
-                    className={`fe-province-tile${isSelected ? ' is-selected' : ''}`}
+                    className={`fe-province-tile${shieldFocus != null ? ' has-shield-focus' : ''}`}
                     style={{
                       borderWidth,
                       borderColor,
                       background: 'transparent',
                       minHeight: 0,
                       borderRadius: 0,
+                      zIndex: shieldFocus != null ? 3 : undefined,
                     }}
                     onClick={() => handleLandTileClick(land, isFogged)}
                     onContextMenu={(e) => {
@@ -696,35 +915,44 @@ export function ProvinceMap({
                         pointerEvents: 'none',
                         ...(isFogged
                           ? { background: 'rgba(180, 170, 140, 0.22)' }
-                          : pid != null
+                          : empireFill != null
                             ? {
-                                background: playerLandBackgroundFromId(pid),
-                                opacity: 0.22,
+                                background: empireFill,
+                                opacity: 0.18,
                                 mixBlendMode: 'multiply',
                               }
                             : { background: 'transparent' }),
                       }}
                     />
                     {!isFogged &&
-                      mapViewMode === 'buildings' &&
-                      (hasCastle || barrackCount > 0 || hasWall) && (
+                      (pid != null || shieldFocus != null) && (
                         <div
+                          className="fe-province-shield"
                           style={{
-                            position: 'relative',
+                            position: 'absolute',
                             zIndex: 2,
-                            padding: '0.2rem',
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '0.2rem',
-                            alignItems: 'flex-start',
-                            height: '100%',
-                            boxSizing: 'border-box',
+                            left: '50%',
+                            top: '50%',
+                            transform: 'translate(-50%, -52%)',
                             pointerEvents: 'none',
+                            opacity: shieldFocus != null ? 1 : 0.92,
                           }}
                         >
-                          {hasCastle && <CastleGlyph size={22} tile />}
-                          {barrackCount > 0 && <BarrackGlyphTileWithCount count={barrackCount} size={22} />}
-                          {hasWall && <WallGlyph size={22} tile />}
+                          {pid != null && mapViewMode === 'contents' ? (
+                            <ContentsShield
+                              land={land}
+                              size={SHIELD_CONTENTS_PX}
+                              focusColor={shieldFocus}
+                            />
+                          ) : pid != null && empireSlot != null ? (
+                            <BannerShield
+                              slot={empireSlot}
+                              size={SHIELD_BANNER_PX}
+                              focusColor={shieldFocus}
+                            />
+                          ) : shieldFocus != null ? (
+                            <EmptyShieldOutline size={shieldSize} focusColor={shieldFocus} />
+                          ) : null}
                         </div>
                       )}
                     {isFogged && (
@@ -760,12 +988,13 @@ export function ProvinceMap({
           />
           <div aria-hidden className="fe-map-frame-cell" style={{ backgroundImage: `url(${MAP_FRAME_TILES.br})` }} />
         </div>
+        </div>
       </div>
       <p className="fe-muted" style={{ margin: 0, fontSize: '0.7rem' }}>
-        Карта {rows}×{cols} · плато {SUBTILE}×{SUBTILE}, обрыв снизу. ЛКМ — выбрать, ПКМ — меню.
+        Карта {rows}×{cols} · клетка {PROVINCE_TILE_PX}px · плато {SUBTILE}×{SUBTILE}.
       </p>
 
-      {hoverTooltip != null && landContextMenu == null && (
+      {hoverTooltip != null && landContextMenu == null && !mapPanning && (
         <div
           className="fe-tooltip"
           role="tooltip"
@@ -809,6 +1038,14 @@ export function ProvinceMap({
               >
                 Нанять
               </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={captureLoading}
+                onClick={() => void startMoveToLand(landContextMenu.landId)}
+              >
+                Переместить сюда
+              </button>
             </>
           ) : (
             <>
@@ -816,7 +1053,7 @@ export function ProvinceMap({
                 type="button"
                 role="menuitem"
                 disabled={captureLoading}
-                onClick={() => void startCaptureFromContext(landContextMenu.landId)}
+                onClick={() => void startMoveToLand(landContextMenu.landId)}
               >
                 Захватить
               </button>

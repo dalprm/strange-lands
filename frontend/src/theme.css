@@ -361,15 +361,23 @@ code {
   font-weight: 600;
 }
 
+.fe-map-viewport {
+  position: relative;
+}
+
+.fe-map-pan-layer {
+  position: relative;
+}
+
 .fe-map-island {
   position: relative;
-  width: 100%;
   background-color: #8fd3f4;
   background-size: 64px 64px;
   background-repeat: repeat;
   border-radius: 6px;
   overflow: hidden;
   box-shadow: inset 0 0 0 1px rgba(40, 70, 90, 0.15);
+  flex-shrink: 0;
 }
 
 .fe-map-frame-cell {
@@ -449,10 +457,12 @@ code {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-.fe-province-tile.is-selected {
-  outline: 2px solid var(--fe-selected);
-  outline-offset: -2px;
+.fe-province-tile.has-shield-focus {
   z-index: 3;
+}
+
+.fe-province-shield {
+  line-height: 0;
 }
 
 .fe-tile-text {
