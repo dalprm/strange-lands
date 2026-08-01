@@ -164,14 +164,20 @@ function CrestMark({ slot }: { slot: EmpireSlot }) {
 
 type SlotIcon = 'castle' | 'barrack' | 'wall' | 'troops' | 'hero' | 'magic' | 'cleric';
 
-/** Шаг сетки: одинаковый по X и Y (центры иконок). Фиксированная 2-2-2-1. */
-const CONTENT_PITCH = 18;
-const CONTENT_ICON = 14;
-const CONTENT_COL_L = 50 - CONTENT_PITCH / 2;
-const CONTENT_COL_R = 50 + CONTENT_PITCH / 2;
+/**
+ * Сетка 2×3 + нижний центр (2-2-2-1): центры иконок = центры ячеек.
+ * По X шире для зазора в строке; по Y чуть выше — воздух в ячейке.
+ */
+const CONTENT_PITCH_X = 30;
+const CONTENT_PITCH_Y = 19.5;
+const CONTENT_ICON = 12;
+/** Локальный холст иконки 16×16; якорь — центр (8,8). */
+const CONTENT_ICON_ORIGIN = 8;
+const CONTENT_COL_L = 50 - CONTENT_PITCH_X / 2;
+const CONTENT_COL_R = 50 + CONTENT_PITCH_X / 2;
 const CONTENT_COL_C = 50;
-/** Верх первого ряда — сетка всегда на полную высоту, без сжатия. */
-const CONTENT_ROW0_Y = 26;
+/** Центр первого ряда (сетка на всю высоту щита). */
+const CONTENT_ROW0_Y = 25;
 
 /**
  * Фиксированные слоты 2-2-2-1 (как в FE Contents):
@@ -180,16 +186,48 @@ const CONTENT_ROW0_Y = 26;
 const CONTENT_SLOTS: { kind: SlotIcon; x: number; y: number }[] = [
   { kind: 'castle', x: CONTENT_COL_L, y: CONTENT_ROW0_Y },
   { kind: 'barrack', x: CONTENT_COL_R, y: CONTENT_ROW0_Y },
-  { kind: 'troops', x: CONTENT_COL_L, y: CONTENT_ROW0_Y + CONTENT_PITCH },
-  { kind: 'hero', x: CONTENT_COL_R, y: CONTENT_ROW0_Y + CONTENT_PITCH },
-  { kind: 'cleric', x: CONTENT_COL_L, y: CONTENT_ROW0_Y + CONTENT_PITCH * 2 },
-  { kind: 'magic', x: CONTENT_COL_R, y: CONTENT_ROW0_Y + CONTENT_PITCH * 2 },
-  { kind: 'wall', x: CONTENT_COL_C, y: CONTENT_ROW0_Y + CONTENT_PITCH * 3 },
+  { kind: 'troops', x: CONTENT_COL_L, y: CONTENT_ROW0_Y + CONTENT_PITCH_Y },
+  { kind: 'hero', x: CONTENT_COL_R, y: CONTENT_ROW0_Y + CONTENT_PITCH_Y },
+  { kind: 'cleric', x: CONTENT_COL_L, y: CONTENT_ROW0_Y + CONTENT_PITCH_Y * 2 },
+  { kind: 'magic', x: CONTENT_COL_R, y: CONTENT_ROW0_Y + CONTENT_PITCH_Y * 2 },
+  { kind: 'wall', x: CONTENT_COL_C, y: CONTENT_ROW0_Y + CONTENT_PITCH_Y * 3 },
 ];
+
+/** Границы ячеек сетки (viewBox 100×100), совпадают с центрами CONTENT_SLOTS. */
+const CONTENT_GRID_LEFT = CONTENT_COL_L - CONTENT_PITCH_X / 2;
+const CONTENT_GRID_RIGHT = CONTENT_COL_R + CONTENT_PITCH_X / 2;
+const CONTENT_GRID_TOP = CONTENT_ROW0_Y - CONTENT_PITCH_Y / 2;
+const CONTENT_GRID_MID_X = CONTENT_COL_C;
+const CONTENT_GRID_ROW_YS = [0, 1, 2, 3, 4].map(
+  (i) => CONTENT_GRID_TOP + CONTENT_PITCH_Y * i,
+);
+/** Нижняя горизонталь разделяет 2×3 и ряд крепости; вертикаль только над ним. */
+const CONTENT_GRID_SPLIT_Y = CONTENT_GRID_ROW_YS[3]!;
 
 /** Как WarriorType.isHero(): HERO_* + CLERIC + MAGIC. */
 function isHeroUnitType(type: string): boolean {
   return type.startsWith('HERO_') || type === 'CLERIC' || type === 'MAGIC';
+}
+
+/** Только внутренние делители сетки 2-2-2-1 (без внешней рамки). */
+function ContentsGridLines() {
+  const stroke = 'rgba(201, 162, 39, 0.42)';
+  const L = CONTENT_GRID_LEFT;
+  const R = CONTENT_GRID_RIGHT;
+  const top = CONTENT_GRID_ROW_YS[0]!;
+  return (
+    <g fill="none" stroke={stroke} strokeWidth={0.9} pointerEvents="none">
+      {CONTENT_GRID_ROW_YS.slice(1, 4).map((y) => (
+        <line key={y} x1={L} y1={y} x2={R} y2={y} />
+      ))}
+      <line
+        x1={CONTENT_GRID_MID_X}
+        y1={top}
+        x2={CONTENT_GRID_MID_X}
+        y2={CONTENT_GRID_SPLIT_Y}
+      />
+    </g>
+  );
 }
 
 type ContentsProps = {
@@ -204,7 +242,7 @@ export function ContentsShield({ land, size = 40, className, focusColor }: Conte
   const present = contentPresence(land);
   const any = CONTENT_SLOTS.some((s) => present[s.kind]);
   const uid = `cnt-${land.id}`;
-  const half = CONTENT_ICON / 2;
+  const iconScale = CONTENT_ICON / 16;
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -227,6 +265,7 @@ export function ContentsShield({ land, size = 40, className, focusColor }: Conte
       {focusColor != null && focusColor !== '' && <ShieldFocusStroke color={focusColor} />}
       <path d={SHIELD_PATH} fill={`url(#${uid}-g)`} stroke="#c9a227" strokeWidth={3.2} />
       <g clipPath={`url(#${uid}-clip)`}>
+        <ContentsGridLines />
         {!any ? (
           <text
             x="50"
@@ -244,7 +283,7 @@ export function ContentsShield({ land, size = 40, className, focusColor }: Conte
             present[slot.kind] ? (
               <g
                 key={slot.kind}
-                transform={`translate(${slot.x - half}, ${slot.y - half}) scale(${CONTENT_ICON / 16})`}
+                transform={`translate(${slot.x}, ${slot.y}) scale(${iconScale}) translate(${-CONTENT_ICON_ORIGIN}, ${-CONTENT_ICON_ORIGIN})`}
               >
                 <MiniIcon kind={slot.kind} />
               </g>
@@ -272,6 +311,7 @@ function contentPresence(land: LandDto): Record<SlotIcon, boolean> {
   };
 }
 
+/** Глифы в холсте 16×16, визуальный центр ≈ (8,8). */
 function MiniIcon({ kind }: { kind: SlotIcon }) {
   const ink = '#f3e6c8';
   const dark = '#1a1208';
@@ -279,56 +319,56 @@ function MiniIcon({ kind }: { kind: SlotIcon }) {
     case 'castle':
       return (
         <g>
-          <rect x="5" y="7" width="6" height="9" fill={dark} stroke={ink} strokeWidth={0.8} />
-          <rect x="0" y="5" width="4" height="11" fill={dark} stroke={ink} strokeWidth={0.8} />
-          <rect x="12" y="5" width="4" height="11" fill={dark} stroke={ink} strokeWidth={0.8} />
-          <polygon points="5,7 8,2 11,7" fill={ink} />
+          <rect x="5" y="6" width="6" height="8" fill={dark} stroke={ink} strokeWidth={0.8} />
+          <rect x="0" y="4" width="4" height="10" fill={dark} stroke={ink} strokeWidth={0.8} />
+          <rect x="12" y="4" width="4" height="10" fill={dark} stroke={ink} strokeWidth={0.8} />
+          <polygon points="5,6 8,1.5 11,6" fill={ink} />
         </g>
       );
     case 'barrack':
       return (
         <g>
-          <rect x="1" y="5" width="14" height="10" fill={dark} stroke={ink} strokeWidth={0.8} />
-          <rect x="3" y="7" width="3" height="3" fill={ink} opacity={0.7} />
-          <rect x="7" y="7" width="3" height="3" fill={ink} opacity={0.7} />
-          <rect x="11" y="7" width="2" height="3" fill={ink} opacity={0.7} />
+          <rect x="1" y="3.5" width="14" height="9" fill={dark} stroke={ink} strokeWidth={0.8} />
+          <rect x="3" y="5.5" width="3" height="3" fill={ink} opacity={0.7} />
+          <rect x="7" y="5.5" width="3" height="3" fill={ink} opacity={0.7} />
+          <rect x="11" y="5.5" width="2" height="3" fill={ink} opacity={0.7} />
         </g>
       );
     case 'wall':
       return (
         <g>
-          <rect x="0" y="8" width="16" height="7" fill={dark} stroke={ink} strokeWidth={0.8} />
+          <rect x="0" y="7" width="16" height="6" fill={dark} stroke={ink} strokeWidth={0.8} />
           {[0, 4, 8, 12].map((x) => (
-            <rect key={x} x={x} y="5" width="3" height="3" fill={dark} stroke={ink} strokeWidth={0.6} />
+            <rect key={x} x={x} y="4" width="3" height="3" fill={dark} stroke={ink} strokeWidth={0.6} />
           ))}
         </g>
       );
     case 'troops':
       return (
         <g stroke={ink} fill="none" strokeWidth={1.2} strokeLinecap="round">
-          <line x1="8" y1="1" x2="8" y2="14" />
-          <line x1="3" y1="5" x2="13" y2="5" />
-          <circle cx="8" cy="3" r="1.5" fill={ink} />
+          <line x1="8" y1="2" x2="8" y2="14" />
+          <line x1="3" y1="6" x2="13" y2="6" />
+          <circle cx="8" cy="4" r="1.5" fill={ink} />
         </g>
       );
     case 'hero':
       return (
         <g>
-          <circle cx="8" cy="5" r="3" fill={ink} />
-          <path d="M3 15 Q8 9 13 15" fill={ink} />
+          <circle cx="8" cy="5.5" r="3" fill={ink} />
+          <path d="M3 14.5 Q8 9 13 14.5" fill={ink} />
         </g>
       );
     case 'magic':
       return (
         <g fill={ink}>
-          <polygon points="8,1 9.5,6 15,6 10.5,9 12,14 8,11 4,14 5.5,9 1,6 6.5,6" />
+          <polygon points="8,1.5 9.5,6.2 15,6.2 10.5,9.2 12,14.5 8,11.3 4,14.5 5.5,9.2 1,6.2 6.5,6.2" />
         </g>
       );
     case 'cleric':
       return (
         <g fill={ink}>
-          <rect x="7" y="1" width="2" height="14" />
-          <rect x="3" y="5" width="10" height="2" />
+          <rect x="7" y="1.5" width="2" height="13" />
+          <rect x="3" y="5.5" width="10" height="2" />
         </g>
       );
     default:
