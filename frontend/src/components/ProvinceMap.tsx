@@ -9,7 +9,6 @@ import {
 import type { LandDto, RecruitOptionsDto, WorldDetail } from '../api/client';
 import { getMoveTargetLands, getRecruitOptions, moveWarriors, recruitWarriorsBatch } from '../api/client';
 import {
-  empireFillForPlayer,
   empireSelectionRing,
   empireSlotForPlayer,
   orderedEmpirePlayerIds,
@@ -889,10 +888,6 @@ export function ProvinceMap({
                 const isSelected = selectedLandId === land.id;
                 const isFogged = fogVisibleLandIds != null && !fogVisibleLandIds.has(land.id);
                 const empireSlot = pid != null ? empireSlotForPlayer(pid, empirePlayerIds) : null;
-                const empireFill =
-                  pid != null
-                    ? empireFillForPlayer(pid, empirePlayerIds, playerLandBackgroundFromId(pid))
-                    : null;
                 const isMoveSource =
                   moveFlow != null && moveFlow.sourceIds.includes(land.id);
                 const isMoveTarget =
@@ -979,23 +974,17 @@ export function ProvinceMap({
                     onMouseMove={showTip}
                     onMouseLeave={() => setHoverTooltip(null)}
                   >
-                    <div
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        zIndex: 1,
-                        pointerEvents: 'none',
-                        ...(isFogged
-                          ? { background: 'rgba(180, 170, 140, 0.22)' }
-                          : empireFill != null
-                            ? {
-                                background: empireFill,
-                                opacity: 0.18,
-                                mixBlendMode: 'multiply',
-                              }
-                            : { background: 'transparent' }),
-                      }}
-                    />
+                    {isFogged && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          zIndex: 1,
+                          pointerEvents: 'none',
+                          background: 'rgba(180, 170, 140, 0.22)',
+                        }}
+                      />
+                    )}
                     {!isFogged &&
                       (pid != null || shieldFocus != null) && (
                         <div
