@@ -13,7 +13,10 @@ import {
 export const SHIELD_PATH =
   'M50 4 L88 18 L88 52 C88 78 68 92 50 96 C32 92 12 78 12 52 L12 18 Z';
 
-/** Цвет обводки: цель/источник > выбрано (для своей — цвет из heraldry). */
+/**
+ * Цвет канта щита (вместо второй рамки):
+ * источник хода → цель хода → выбор (своя — selectionRing империи).
+ */
 export function resolveShieldFocusColor(flags: {
   isCaptureSource?: boolean;
   isCaptureTarget?: boolean;
@@ -29,21 +32,7 @@ export function resolveShieldFocusColor(flags: {
   return null;
 }
 
-function ShieldFocusStroke({ color }: { color: string }) {
-  return (
-    <path
-      d={SHIELD_PATH}
-      fill="none"
-      stroke={color}
-      strokeWidth={8}
-      strokeLinejoin="round"
-      strokeLinecap="round"
-      opacity={0.95}
-    />
-  );
-}
-
-/** Пустой контур щита (нейтраль / цель без герба). */
+/** Пустой контур щита (нейтраль / цель без герба) — фокус перекрашивает кант. */
 export function EmptyShieldOutline({
   size = 36,
   focusColor,
@@ -63,12 +52,12 @@ export function EmptyShieldOutline({
       aria-hidden
       style={{ display: 'block', flexShrink: 0, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.55))' }}
     >
-      <ShieldFocusStroke color={focusColor} />
       <path
         d={SHIELD_PATH}
         fill="rgba(26, 18, 8, 0.45)"
-        stroke="rgba(201, 162, 39, 0.55)"
-        strokeWidth={2.5}
+        stroke={focusColor}
+        strokeWidth={3.2}
+        strokeLinejoin="round"
       />
     </svg>
   );
@@ -79,14 +68,15 @@ type BannerProps = {
   size?: number;
   className?: string;
   title?: string;
-  /** Обводка состояния (выбор / ход / перемещение) */
+  /** Перекраска канта: выбор / источник / цель перемещения */
   focusColor?: string | null;
 };
 
-/** Щит империи — цвет + уникальный герб слота 0…5. */
+/** Щит империи — цвет + уникальный герб слота 0…5. По умолчанию без канта; кант только при фокусе. */
 export function BannerShield({ slot, size = 36, className, title, focusColor }: BannerProps) {
   const h = empireHeraldry(slot);
   const uid = `ban-${slot}`;
+  const hasRim = focusColor != null && focusColor !== '';
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -106,8 +96,13 @@ export function BannerShield({ slot, size = 36, className, title, focusColor }: 
           <stop offset="100%" stopColor="#1a1208" stopOpacity={0.85} />
         </linearGradient>
       </defs>
-      {focusColor != null && focusColor !== '' && <ShieldFocusStroke color={focusColor} />}
-      <path d={SHIELD_PATH} fill={`url(#${uid}-g)`} stroke={h.stroke} strokeWidth={3.5} />
+      <path
+        d={SHIELD_PATH}
+        fill={`url(#${uid}-g)`}
+        stroke={hasRim ? focusColor! : 'none'}
+        strokeWidth={hasRim ? 4.2 : 0}
+        strokeLinejoin="round"
+      />
       <path
         d="M50 10 L80 22 L80 50 C80 70 64 82 50 86 C36 82 20 70 20 50 L20 22 Z"
         fill="none"
@@ -239,7 +234,7 @@ type ContentsProps = {
   focusColor?: string | null;
 };
 
-/** Щит «здания и войска» — фиксированная сетка 2-2-2-1; claim-pending — мечи во весь щит. */
+/** Щит «здания и войска» — сетка 2-2-2-1; без канта по умолчанию, кант только при фокусе. */
 export function ContentsShield({ land, slot, size = 40, className, focusColor }: ContentsProps) {
   const present = contentPresence(land);
   const any = CONTENT_SLOTS.some((s) => present[s.kind]);
@@ -247,6 +242,7 @@ export function ContentsShield({ land, slot, size = 40, className, focusColor }:
   const uid = `cnt-${land.id}-${slot}`;
   const iconScale = CONTENT_ICON / 16;
   const claimPending = land.claimPending === true;
+  const hasRim = focusColor != null && focusColor !== '';
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -267,8 +263,13 @@ export function ContentsShield({ land, slot, size = 40, className, focusColor }:
           <path d={SHIELD_PATH} />
         </clipPath>
       </defs>
-      {focusColor != null && focusColor !== '' && <ShieldFocusStroke color={focusColor} />}
-      <path d={SHIELD_PATH} fill={`url(#${uid}-g)`} stroke={h.stroke} strokeWidth={3.2} />
+      <path
+        d={SHIELD_PATH}
+        fill={`url(#${uid}-g)`}
+        stroke={hasRim ? focusColor! : 'none'}
+        strokeWidth={hasRim ? 4 : 0}
+        strokeLinejoin="round"
+      />
       <g clipPath={`url(#${uid}-clip)`}>
         {claimPending ? (
           <g transform="translate(18, 22) scale(0.64)">
