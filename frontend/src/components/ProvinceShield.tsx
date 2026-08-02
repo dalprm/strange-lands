@@ -232,16 +232,19 @@ function ContentsGridLines() {
 
 type ContentsProps = {
   land: LandDto;
+  /** Слот империи — тот же градиент фона, что у режима «Империя». */
+  slot: EmpireSlot;
   size?: number;
   className?: string;
   focusColor?: string | null;
 };
 
 /** Щит «здания и войска» — фиксированная сетка 2-2-2-1; claim-pending — мечи во весь щит. */
-export function ContentsShield({ land, size = 40, className, focusColor }: ContentsProps) {
+export function ContentsShield({ land, slot, size = 40, className, focusColor }: ContentsProps) {
   const present = contentPresence(land);
   const any = CONTENT_SLOTS.some((s) => present[s.kind]);
-  const uid = `cnt-${land.id}`;
+  const h = empireHeraldry(slot);
+  const uid = `cnt-${land.id}-${slot}`;
   const iconScale = CONTENT_ICON / 16;
   const claimPending = land.claimPending === true;
   return (
@@ -256,15 +259,16 @@ export function ContentsShield({ land, size = 40, className, focusColor }: Conte
     >
       <defs>
         <linearGradient id={`${uid}-g`} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#4a3a28" />
-          <stop offset="100%" stopColor="#1a1208" />
+          <stop offset="0%" stopColor={h.highlight} />
+          <stop offset="55%" stopColor={h.fill} />
+          <stop offset="100%" stopColor="#1a1208" stopOpacity={0.85} />
         </linearGradient>
         <clipPath id={`${uid}-clip`}>
           <path d={SHIELD_PATH} />
         </clipPath>
       </defs>
       {focusColor != null && focusColor !== '' && <ShieldFocusStroke color={focusColor} />}
-      <path d={SHIELD_PATH} fill={`url(#${uid}-g)`} stroke="#c9a227" strokeWidth={3.2} />
+      <path d={SHIELD_PATH} fill={`url(#${uid}-g)`} stroke={h.stroke} strokeWidth={3.2} />
       <g clipPath={`url(#${uid}-clip)`}>
         {claimPending ? (
           <g transform="translate(18, 22) scale(0.64)">

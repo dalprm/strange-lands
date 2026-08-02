@@ -1090,9 +1090,10 @@ export function ProvinceMap({
                             opacity: shieldFocus != null ? 1 : 0.92,
                           }}
                         >
-                          {pid != null && showContents ? (
+                          {pid != null && showContents && empireSlot != null ? (
                             <ContentsShield
                               land={land}
+                              slot={empireSlot}
                               size={SHIELD_CONTENTS_PX}
                               focusColor={shieldFocus}
                             />
