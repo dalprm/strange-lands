@@ -8,6 +8,7 @@ import ru.lr.fantasy.domain.model.action.WarriorsMoveOutAction;
 import ru.lr.fantasy.domain.model.building.BarrackBuilding;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 
 public class TurnTest {
@@ -123,6 +124,34 @@ public class TurnTest {
         turn.doTurn();
         assertEquals(
                 EconomyRules.STARTING_GOLD + expectedIncome,
+                world.findPlayerWorldResources(42L).orElseThrow().getGold());
+    }
+
+    @Test
+    public void landWithoutCastleGivesNoIncome() {
+        Player dal = new Player(3, "Dal");
+        dal.setId(42L);
+        World world = new WorldFactory(dal).create(4, 4);
+        world.ensurePlayerWorldResources(42L);
+        Land owned = world.getPlayerLands(dal).get(0);
+        long before = world.findPlayerWorldResources(42L).orElseThrow().getGold();
+
+        Land plain = null;
+        for (Land land : world.getLands()) {
+            if (!land.hasPlayer()) {
+                plain = land;
+                break;
+            }
+        }
+        assertNotNull(plain);
+        plain.setPlayer(dal);
+        assertFalse(plain.getBuildings().hasCastle());
+
+        World.CastleIncomeSummary summary = world.collectCastleIncomeGoldForPlayer(42L);
+        assertEquals(owned.getCosts(), summary.getGoldAdded());
+        assertEquals(1, summary.getCastleLandCount());
+        assertEquals(
+                before + owned.getCosts(),
                 world.findPlayerWorldResources(42L).orElseThrow().getGold());
     }
 }

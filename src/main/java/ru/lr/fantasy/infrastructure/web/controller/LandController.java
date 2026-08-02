@@ -62,7 +62,6 @@ public class LandController {
             @PathVariable Long worldId,
             @PathVariable Long landId,
             @RequestBody BuildBuildingRequest request) {
-        
         Building building = createBuilding(request);
         landUseCase.buildBuilding(worldId, landId, building);
         return ResponseEntity.ok().build();

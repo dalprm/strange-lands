@@ -18,7 +18,8 @@ public record LandDiagnosticDto(
         Buildings buildings,
         List<Warrior> warriors,
         List<String> accessBuildWarriorTypes,
-        List<Long> neighboringLandIds
+        List<Long> neighboringLandIds,
+        boolean claimPending
 ) {
     public static LandDiagnosticDto from(Land land) {
         List<Long> neighIds = land.getNeighboring().stream()
@@ -37,7 +38,8 @@ public record LandDiagnosticDto(
                 land.getBuildings(),
                 new ArrayList<>(land.getWarriors()),
                 types,
-                neighIds
+                neighIds,
+                land.isClaimPending()
         );
     }
 }

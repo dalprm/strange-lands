@@ -31,6 +31,8 @@ export type LandDto = {
   warriors?: WarriorDto[] | null;
   /** типы, доступные для найма на этой земле */
   accessBuildWarriorTypes?: string[];
+  /** владелец назначен приказом на нейтраль, гарнизон ещё в пути */
+  claimPending?: boolean;
 };
 
 export type WorldDetail = {

@@ -127,6 +127,12 @@ export function landHasCastle(b: BuildingsDto | null | undefined): boolean {
   );
 }
 
+/** Доход конца хода: только земли с Ратушей (как {@code World.collectCastleIncomeGoldForPlayer}). */
+export function landTurnIncome(land: { costs?: number; buildings?: BuildingsDto | null }): number {
+  if (!landHasCastle(land.buildings)) return 0;
+  return land.costs ?? 0;
+}
+
 export function landHasWall(b: BuildingsDto | null | undefined): boolean {
   if (b == null) return false;
   if (b.hasWall === true) return true;

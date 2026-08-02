@@ -237,12 +237,13 @@ type ContentsProps = {
   focusColor?: string | null;
 };
 
-/** Щит «здания и войска» — фиксированная сетка 2-2-2-1. */
+/** Щит «здания и войска» — фиксированная сетка 2-2-2-1; claim-pending — мечи во весь щит. */
 export function ContentsShield({ land, size = 40, className, focusColor }: ContentsProps) {
   const present = contentPresence(land);
   const any = CONTENT_SLOTS.some((s) => present[s.kind]);
   const uid = `cnt-${land.id}`;
   const iconScale = CONTENT_ICON / 16;
+  const claimPending = land.claimPending === true;
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -265,30 +266,47 @@ export function ContentsShield({ land, size = 40, className, focusColor }: Conte
       {focusColor != null && focusColor !== '' && <ShieldFocusStroke color={focusColor} />}
       <path d={SHIELD_PATH} fill={`url(#${uid}-g)`} stroke="#c9a227" strokeWidth={3.2} />
       <g clipPath={`url(#${uid}-clip)`}>
-        <ContentsGridLines />
-        {!any ? (
-          <text
-            x="50"
-            y="52"
-            textAnchor="middle"
-            fill="#c4b48a"
-            fontSize="11"
-            fontFamily="serif"
-            opacity={0.7}
-          >
-            —
-          </text>
+        {claimPending ? (
+          <g transform="translate(18, 22) scale(0.64)">
+            <g stroke="#c9a227" strokeWidth={7} strokeLinecap="round" fill="none">
+              <path d="M22 78 L78 22" />
+              <path d="M78 78 L22 22" />
+            </g>
+            <g fill="#f3e6c8" stroke="#1a1208" strokeWidth={1.5}>
+              <circle cx="22" cy="78" r="6" />
+              <circle cx="78" cy="78" r="6" />
+              <rect x="74" y="16" width="12" height="16" rx="1" transform="rotate(45 80 24)" />
+              <rect x="14" y="16" width="12" height="16" rx="1" transform="rotate(-45 20 24)" />
+            </g>
+          </g>
         ) : (
-          CONTENT_SLOTS.map((slot) =>
-            present[slot.kind] ? (
-              <g
-                key={slot.kind}
-                transform={`translate(${slot.x}, ${slot.y}) scale(${iconScale}) translate(${-CONTENT_ICON_ORIGIN}, ${-CONTENT_ICON_ORIGIN})`}
+          <>
+            <ContentsGridLines />
+            {!any ? (
+              <text
+                x="50"
+                y="52"
+                textAnchor="middle"
+                fill="#c4b48a"
+                fontSize="11"
+                fontFamily="serif"
+                opacity={0.7}
               >
-                <MiniIcon kind={slot.kind} />
-              </g>
-            ) : null,
-          )
+                —
+              </text>
+            ) : (
+              CONTENT_SLOTS.map((slot) =>
+                present[slot.kind] ? (
+                  <g
+                    key={slot.kind}
+                    transform={`translate(${slot.x}, ${slot.y}) scale(${iconScale}) translate(${-CONTENT_ICON_ORIGIN}, ${-CONTENT_ICON_ORIGIN})`}
+                  >
+                    <MiniIcon kind={slot.kind} />
+                  </g>
+                ) : null,
+              )
+            )}
+          </>
         )}
       </g>
     </svg>

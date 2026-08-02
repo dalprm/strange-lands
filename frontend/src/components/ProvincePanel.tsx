@@ -11,6 +11,7 @@ import {
   formatWarriorLine,
   landBarrackCount,
   landHasCastle,
+  landTurnIncome,
   landHasWall,
   landOwnerLabel,
   landWallLevelDisplay,
@@ -65,7 +66,8 @@ export function ProvincePanel({
   const hasWall = landHasWall(land.buildings);
   const wallCaption = landWallLevelDisplay(land.buildings);
   const barrackCount = landBarrackCount(land.buildings);
-  const buildActions = availableBuildActions(land.buildings);
+  const buildActions = land.claimPending ? [] : availableBuildActions(land.buildings);
+  const claimPending = land.claimPending === true;
   const empireIds = orderedEmpirePlayerIds(
     (world?.lands ?? []).map((l) => l.player?.id).filter((id): id is number => id != null),
   );
@@ -125,14 +127,17 @@ export function ProvincePanel({
       </div>
 
       <dl style={{ margin: 0, fontSize: '0.82rem', display: 'grid', gap: '0.35rem' }}>
-        {land.costs != null && (
-          <div style={{ display: 'flex', gap: '0.4rem' }}>
-            <dt className="fe-muted" style={{ margin: 0 }}>
-              Доход
-            </dt>
-            <dd style={{ margin: 0 }}>{land.costs}</dd>
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          <dt className="fe-muted" style={{ margin: 0 }}>
+            Доход
+          </dt>
+          <dd style={{ margin: 0 }}>
+            {landTurnIncome(land)}
+            {!hasCastle ? (
+              <span className="fe-muted"> (нужна Ратуша)</span>
+            ) : null}
+          </dd>
+        </div>
         {neighborIds != null && neighborIds.length > 0 && (
           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
             <dt className="fe-muted" style={{ margin: 0 }}>
@@ -169,6 +174,12 @@ export function ProvincePanel({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginTop: '0.25rem' }}>
           {isOwn && (
             <>
+              {claimPending ? (
+                <p className="fe-muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+                  Гарнизон в пути — постройка и найм недоступны
+                </p>
+              ) : (
+                <>
               <div className="fe-muted" style={{ fontSize: '0.75rem' }}>
                 Постройка
               </div>
@@ -199,6 +210,8 @@ export function ProvincePanel({
               >
                 Нанять войска
               </button>
+                </>
+              )}
             </>
           )}
         </div>

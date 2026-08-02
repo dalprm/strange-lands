@@ -113,6 +113,9 @@ public class LandService implements LandUseCase {
         World world = getWorld(worldId);
         Land land = world.getLand(landId);
         assertLandOwnerIsCurrentPlayer(world, land);
+        if (land.isClaimPending()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Нельзя нанимать: гарнизон ещё в пути");
+        }
         Turn turn = world.getTurn();
 
         // схлопнуть дубликаты типов на всякий случай
@@ -220,6 +223,7 @@ public class LandService implements LandUseCase {
         Player owner = player != null ? player : fromLand.getPlayer();
         int t = Math.max(1, turns);
         Turn turn = world.getTurn();
+        world.claimNeutralOnMarchOrder(toLand, owner);
         turn.acceptAction(new WarriorsMoveOutAction(world, fromLand, warriors));
         turn.acceptAction(new WarriorsMoveInAction(world, toLand, owner, t, warriors));
         worldRepository.save(world);

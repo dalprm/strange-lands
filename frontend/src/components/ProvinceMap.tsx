@@ -7,7 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { LandDto, RecruitOptionsDto, WorldDetail } from '../api/client';
-import { getMoveTargetLands, getRecruitOptions, moveWarriors, recruitWarriorsBatch } from '../api/client';
+import { getRecruitOptions, moveWarriors, recruitWarriorsBatch } from '../api/client';
 import {
   empireSelectionRing,
   empireSlotForPlayer,
@@ -19,6 +19,7 @@ import {
   computeFogOfWarVisibleLandIds,
   landBarrackCount,
   landHasCastle,
+  landTurnIncome,
   landHasWall,
   landOwnerLabel,
   playerLandBackgroundFromId,
@@ -32,6 +33,7 @@ import {
   buildTerrainLayout,
 } from '../land/terrainTiles';
 import { FogOfWarOverlay } from './icons';
+import { LandHoverTooltipLayer, type LandHoverTooltipApi } from './LandHoverTooltipLayer';
 import {
   BannerShield,
   ContentsShield,
@@ -86,13 +88,6 @@ type MoveFlowState =
   | { phase: 'pick-source'; sourceIds: number[] }
   | { phase: 'pick-target'; fromId: number; sourceIds: number[]; targetIds: number[] };
 
-type LandHoverTooltip = {
-  x: number;
-  y: number;
-  title: string;
-  lines: string[];
-};
-
 type RecruitDraftSlot = {
   id: string;
   warriorType: string;
@@ -100,6 +95,9 @@ type RecruitDraftSlot = {
   turnCount: number;
   slotPool: string;
 };
+
+/** Сколько строк очереди без скролла в одной колонке (средняя / правая). */
+const RECRUIT_QUEUE_COL_CAPACITY = 9;
 
 let recruitDraftSeq = 0;
 
@@ -128,16 +126,15 @@ export function ProvinceMap({
   const [recruitSubmitting, setRecruitSubmitting] = useState(false);
   const [recruitError, setRecruitError] = useState<string | null>(null);
   const [moveFlow, setMoveFlow] = useState<MoveFlowState | null>(null);
-  const [moveFlowLoading, setMoveFlowLoading] = useState(false);
   const [moveFlowError, setMoveFlowError] = useState<string | null>(null);
   const lastMoveToggleRequest = useRef(0);
   const [moveWarriorsModal, setMoveWarriorsModal] = useState<null | { fromId: number; toId: number }>(null);
   const [moveCounts, setMoveCounts] = useState<Record<string, number>>({});
   const [moveSubmitting, setMoveSubmitting] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
-  const [hoverTooltip, setHoverTooltip] = useState<LandHoverTooltip | null>(null);
   const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
   const [mapPanning, setMapPanning] = useState(false);
+  const hoverTooltipApiRef = useRef<LandHoverTooltipApi | null>(null);
   const mapViewportRef = useRef<HTMLDivElement | null>(null);
   const mapPanSession = useRef<{
     pointerId: number;
@@ -153,7 +150,7 @@ export function ProvinceMap({
   const fogVisibleLandIds = useMemo(() => {
     if (world == null || !world.lands?.length || currentPlayerId == null) return null;
     return computeFogOfWarVisibleLandIds(world.lands, world.neighbors, currentPlayerId);
-  }, [world, currentPlayerId]);
+  }, [world?.lands, world?.neighbors, currentPlayerId]);
 
   const terrainPack = useMemo(() => {
     if (world == null || world.size == null) {
@@ -169,7 +166,9 @@ export function ProvinceMap({
       layout.hCols,
     );
     return { ...layout, decor };
-  }, [world]);
+    // Terrain seed = worldId + geometry; ownership/troops must not rebuild tiles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional stable key
+  }, [world?.id, world?.size?.width, world?.size?.height]);
 
   useEffect(() => {
     setMapViewMode('banner');
@@ -184,7 +183,7 @@ export function ProvinceMap({
     setMoveFlowError(null);
     setMoveWarriorsModal(null);
     setMoveError(null);
-    setHoverTooltip(null);
+    hoverTooltipApiRef.current?.hide();
     setMapPan({ x: 0, y: 0 });
     setMapPanning(false);
     mapPanSession.current = null;
@@ -486,7 +485,7 @@ export function ProvinceMap({
   function onMapViewportPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     if (e.button !== 2) return;
     e.preventDefault();
-    setHoverTooltip(null);
+    hoverTooltipApiRef.current?.hide();
     setLandContextMenu(null);
     suppressContextMenuRef.current = false;
     mapPanSession.current = {
@@ -535,7 +534,6 @@ export function ProvinceMap({
   function clearMoveFlow() {
     setMoveFlow(null);
     setMoveFlowError(null);
-    setMoveFlowLoading(false);
   }
 
   function collectOwnLandsWithTroops(): number[] {
@@ -560,30 +558,24 @@ export function ProvinceMap({
     setMoveFlow({ phase: 'pick-source', sourceIds });
   }
 
-  async function selectMoveSource(fromId: number, sourceIds: number[]) {
+  function selectMoveSource(fromId: number, sourceIds: number[]) {
     if (world == null) return;
-    setMoveFlowLoading(true);
     setMoveFlowError(null);
-    try {
-      const targets = await getMoveTargetLands(world.id, fromId);
-      const targetIds = targets.map((t) => t.id).filter((id): id is number => id != null);
-      if (targetIds.length === 0) {
-        const msg = 'Нет соседних земель для перемещения с этой провинции.';
-        setMoveFlowError(msg);
-        onActionMessage?.('error', msg);
-        setMoveFlow({ phase: 'pick-source', sourceIds });
-        return;
-      }
-      setMoveFlow({ phase: 'pick-target', fromId, sourceIds, targetIds });
-      onSelectLand(fromId);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+    // Цели = соседи из снимка мира (тот же набор, что GET move-targets).
+    // Сервер всё равно валидирует фактический POST move.
+    const raw = world.neighbors?.[String(fromId)] ?? [];
+    const targetIds = raw
+      .map((n) => (typeof n === 'number' ? n : Number(n)))
+      .filter((id): id is number => !Number.isNaN(id) && id !== fromId);
+    if (targetIds.length === 0) {
+      const msg = 'Нет соседних земель для перемещения с этой провинции.';
       setMoveFlowError(msg);
       onActionMessage?.('error', msg);
       setMoveFlow({ phase: 'pick-source', sourceIds });
-    } finally {
-      setMoveFlowLoading(false);
+      return;
     }
+    setMoveFlow({ phase: 'pick-target', fromId, sourceIds, targetIds });
+    onSelectLand(fromId);
   }
 
   function handleLandTileClick(land: LandDto, isFogged: boolean) {
@@ -600,16 +592,17 @@ export function ProvinceMap({
         }
         return;
       }
-      // pick-target
-      if (moveFlow.sourceIds.includes(land.id)) {
-        if (land.id !== moveFlow.fromId) {
-          void selectMoveSource(land.id, moveFlow.sourceIds);
-        }
+      // pick-target: сначала цели (в т.ч. свои земли с войсками — они же в sourceIds)
+      if (land.id === moveFlow.fromId) {
         return;
       }
       if (moveFlow.targetIds.includes(land.id)) {
         setMoveWarriorsModal({ fromId: moveFlow.fromId, toId: land.id });
         setMoveError(null);
+        return;
+      }
+      if (moveFlow.sourceIds.includes(land.id)) {
+        void selectMoveSource(land.id, moveFlow.sourceIds);
         return;
       }
       clearMoveFlow();
@@ -679,6 +672,86 @@ export function ProvinceMap({
     recruitOptions == null ? 0 : Math.max(0, recruitOptions.clericSlotsFree - draftSlotsInPool('CLERIC'));
   const displayMagicFree =
     recruitOptions == null ? 0 : Math.max(0, recruitOptions.magicSlotsFree - draftSlotsInPool('MAGIC'));
+
+  type RecruitQueueEntry =
+    | {
+        kind: 'server';
+        key: string;
+        warriorType: string;
+        count: number;
+        turnsRemaining: number;
+      }
+    | {
+        kind: 'draft';
+        id: string;
+        warriorType: string;
+        count: number;
+        turnCount: number;
+        goldCost: number | string;
+      };
+
+  const recruitQueueEntries: RecruitQueueEntry[] = [
+    ...recruitPending.map((p, i) => ({
+      kind: 'server' as const,
+      key: `srv-${p.warriorType}-${i}-${p.turnsRemaining}`,
+      warriorType: p.warriorType,
+      count: p.count,
+      turnsRemaining: p.turnsRemaining,
+    })),
+    ...recruitDraft.map((d) => ({
+      kind: 'draft' as const,
+      id: d.id,
+      warriorType: d.warriorType,
+      count: d.count,
+      turnCount: d.turnCount,
+      goldCost: recruitTypes.find((t) => t.warriorType === d.warriorType)?.goldCost ?? '?',
+    })),
+  ];
+  const recruitQueueColMid = recruitQueueEntries.slice(0, RECRUIT_QUEUE_COL_CAPACITY);
+  const recruitQueueColRight = recruitQueueEntries.slice(RECRUIT_QUEUE_COL_CAPACITY);
+  const recruitQueueRightNeedsScroll = recruitQueueColRight.length > RECRUIT_QUEUE_COL_CAPACITY;
+
+  function renderRecruitQueueRow(entry: RecruitQueueEntry) {
+    if (entry.kind === 'server') {
+      return (
+        <div
+          key={entry.key}
+          className="fe-recruit-queue-row fe-recruit-queue-row-server"
+          title="Уже в найме — удалить нельзя"
+        >
+          <span>
+            {warriorTypeLabel(entry.warriorType)}
+            {entry.count > 1 ? ` ×${entry.count}` : ''}
+          </span>
+          <span className="fe-muted">
+            {entry.turnsRemaining === 1
+              ? 'через 1 ход'
+              : `через ${entry.turnsRemaining} хода`}
+          </span>
+        </div>
+      );
+    }
+    return (
+      <button
+        key={entry.id}
+        type="button"
+        className="fe-recruit-queue-row fe-recruit-queue-row-draft"
+        disabled={recruitSubmitting}
+        title="Клик — убрать из черновика"
+        onClick={() => removeDraftSlot(entry.id)}
+      >
+        <span>
+          {warriorTypeLabel(entry.warriorType)}
+          {entry.count > 1 ? ` ×${entry.count}` : ''}
+        </span>
+        <span className="fe-muted">
+          {entry.turnCount === 1 ? 'через 1 ход' : `через ${entry.turnCount} хода`} · новый
+          {' · '}
+          {entry.goldCost} GP
+        </span>
+      </button>
+    );
+  }
   const moveFromLand =
     moveWarriorsModal != null && world != null
       ? (world.lands?.find((l) => l.id === moveWarriorsModal.fromId) ?? null)
@@ -751,7 +824,6 @@ export function ProvinceMap({
         })}
       </div>
 
-      {moveFlowLoading && <p className="fe-muted">Загрузка целей перемещения…</p>}
       {moveFlow?.phase === 'pick-source' && (
         <p className="fe-muted" style={{ color: 'var(--fe-capture)', margin: 0 }}>
           Перемещение: кликните свою землю с оранжевым щитом (откуда отправить). Esc — отмена.
@@ -901,7 +973,11 @@ export function ProvinceMap({
                 /** Режим contents — только земли текущего игрока; видимые чужие щиты всегда «Империя». */
                 const showContents = mapViewMode === 'contents' && isOwnLand;
                 const isMoveSource =
-                  moveFlow != null && moveFlow.sourceIds.includes(land.id);
+                  moveFlow == null
+                    ? false
+                    : moveFlow.phase === 'pick-source'
+                      ? moveFlow.sourceIds.includes(land.id)
+                      : moveFlow.fromId === land.id;
                 const isMoveTarget =
                   moveFlow?.phase === 'pick-target' && moveFlow.targetIds.includes(land.id);
                 const selectedOwnRing =
@@ -948,21 +1024,17 @@ export function ProvinceMap({
                 const tipLines = isFogged
                   ? []
                   : [
-                      `Доход ${land.costs ?? '—'}`,
-                      `Найм: ${recruitText}`,
+                      land.claimPending
+                        ? 'Гарнизон в пути'
+                        : hasCastle
+                          ? `Доход ${landTurnIncome(land)}`
+                          : 'Доход 0 (нужна Ратуша)',
+                      land.claimPending ? null : `Найм: ${recruitText}`,
                       buildingBits.length > 0 ? `Здания: ${buildingBits.join(', ')}` : null,
                       sampleTerrain != null
                         ? `Местность: ${biomeLabel[sampleTerrain.biome] ?? sampleTerrain.biome}`
                         : null,
                     ].filter((x): x is string => x != null);
-
-                const showTip = (e: ReactMouseEvent) => {
-                  if (landContextMenu != null || mapPanning) return;
-                  const pad = 12;
-                  const x = Math.min(e.clientX + pad, window.innerWidth - 260);
-                  const y = Math.min(e.clientY + pad, window.innerHeight - 140);
-                  setHoverTooltip({ x, y, title: tipTitle, lines: tipLines });
-                };
 
                 return (
                   <button
@@ -979,12 +1051,18 @@ export function ProvinceMap({
                     }}
                     onClick={() => handleLandTileClick(land, isFogged)}
                     onContextMenu={(e) => {
-                      setHoverTooltip(null);
+                      hoverTooltipApiRef.current?.hide();
                       handleLandContextMenu(e, land, isFogged);
                     }}
-                    onMouseEnter={showTip}
-                    onMouseMove={showTip}
-                    onMouseLeave={() => setHoverTooltip(null)}
+                    onMouseEnter={(e: ReactMouseEvent) => {
+                      if (landContextMenu != null || mapPanning) return;
+                      hoverTooltipApiRef.current?.show(tipTitle, tipLines, e.clientX, e.clientY);
+                    }}
+                    onMouseMove={(e: ReactMouseEvent) => {
+                      if (landContextMenu != null || mapPanning) return;
+                      hoverTooltipApiRef.current?.move(e.clientX, e.clientY);
+                    }}
+                    onMouseLeave={() => hoverTooltipApiRef.current?.hide()}
                   >
                     {isFogged && (
                       <div
@@ -1067,20 +1145,10 @@ export function ProvinceMap({
         Карта {rows}×{cols} · клетка {PROVINCE_TILE_PX}px · плато {SUBTILE}×{SUBTILE}.
       </p>
 
-      {hoverTooltip != null && landContextMenu == null && !mapPanning && (
-        <div
-          className="fe-tooltip"
-          role="tooltip"
-          style={{ left: hoverTooltip.x, top: hoverTooltip.y }}
-        >
-          <div className="fe-tooltip-title">{hoverTooltip.title}</div>
-          {hoverTooltip.lines.map((line) => (
-            <div key={line} className="fe-tooltip-line">
-              {line}
-            </div>
-          ))}
-        </div>
-      )}
+      <LandHoverTooltipLayer
+        apiRef={hoverTooltipApiRef}
+        hidden={landContextMenu != null || mapPanning}
+      />
 
       {landContextMenu != null && (
         <div
@@ -1174,10 +1242,8 @@ export function ProvinceMap({
             ) : (
               <>
                 <div className="fe-recruit-panels">
-                  <div className="fe-recruit-panel">
-                    <div className="fe-muted" style={{ fontSize: '0.72rem', marginBottom: '0.35rem' }}>
-                      Тип войск — клик добавляет в очередь
-                    </div>
+                  <div className="fe-recruit-panel fe-recruit-panel-types">
+                    <div className="fe-muted fe-recruit-panel-label">Тип войск</div>
                     <div className="fe-recruit-type-list" role="listbox" aria-label="Тип войск">
                       {recruitTypes.map((opt) => {
                         const selected = opt.warriorType === selectedRecruitType;
@@ -1199,11 +1265,11 @@ export function ProvinceMap({
                           >
                             <span>{warriorTypeLabel(opt.warriorType)}</span>
                             {noSlots ? (
-                              <span className="fe-muted" style={{ fontSize: '0.72rem' }}>
+                              <span className="fe-muted" style={{ fontSize: '0.65rem' }}>
                                 нет слотов
                               </span>
                             ) : (
-                              <span className="fe-muted" style={{ fontSize: '0.72rem' }}>
+                              <span className="fe-muted" style={{ fontSize: '0.65rem' }}>
                                 +{opt.unitsPerSlot} · {opt.goldCost} GP
                               </span>
                             )}
@@ -1212,55 +1278,27 @@ export function ProvinceMap({
                       })}
                     </div>
                   </div>
-                  <div className="fe-recruit-panel">
-                    <div className="fe-muted" style={{ fontSize: '0.72rem', marginBottom: '0.35rem' }}>
-                      Очередь (1 строка = 1 слот)
-                    </div>
+                  <div className="fe-recruit-panel fe-recruit-panel-queue">
+                    <div className="fe-muted fe-recruit-panel-label">Очередь 1–{RECRUIT_QUEUE_COL_CAPACITY}</div>
                     <div className="fe-recruit-queue">
-                      {recruitPending.length === 0 && recruitDraft.length === 0 ? (
-                        <p className="fe-muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                          Пока пусто — кликните тип слева.
-                        </p>
+                      {recruitQueueEntries.length === 0 ? (
+                        <p className="fe-muted fe-recruit-queue-empty">Пока пусто — клик слева.</p>
                       ) : (
-                        <>
-                          {recruitPending.map((p, i) => (
-                            <div
-                              key={`srv-${p.warriorType}-${i}-${p.turnsRemaining}`}
-                              className="fe-recruit-queue-row fe-recruit-queue-row-server"
-                              title="Уже в найме — удалить нельзя"
-                            >
-                              <span>
-                                {warriorTypeLabel(p.warriorType)}
-                                {p.count > 1 ? ` ×${p.count}` : ''}
-                              </span>
-                              <span className="fe-muted">
-                                {p.turnsRemaining === 1
-                                  ? 'через 1 ход'
-                                  : `через ${p.turnsRemaining} хода`}
-                              </span>
-                            </div>
-                          ))}
-                          {recruitDraft.map((d) => (
-                            <button
-                              key={d.id}
-                              type="button"
-                              className="fe-recruit-queue-row fe-recruit-queue-row-draft"
-                              disabled={recruitSubmitting}
-                              title="Клик — убрать из черновика"
-                              onClick={() => removeDraftSlot(d.id)}
-                            >
-                              <span>
-                                {warriorTypeLabel(d.warriorType)}
-                                {d.count > 1 ? ` ×${d.count}` : ''}
-                              </span>
-                              <span className="fe-muted">
-                                {d.turnCount === 1 ? 'через 1 ход' : `через ${d.turnCount} хода`} · новый
-                                {' · '}
-                                {recruitTypes.find((t) => t.warriorType === d.warriorType)?.goldCost ?? '?'} GP
-                              </span>
-                            </button>
-                          ))}
-                        </>
+                        recruitQueueColMid.map(renderRecruitQueueRow)
+                      )}
+                    </div>
+                  </div>
+                  <div className="fe-recruit-panel fe-recruit-panel-queue">
+                    <div className="fe-muted fe-recruit-panel-label">
+                      Очередь {RECRUIT_QUEUE_COL_CAPACITY + 1}–{RECRUIT_QUEUE_COL_CAPACITY * 2}
+                    </div>
+                    <div
+                      className={`fe-recruit-queue${recruitQueueRightNeedsScroll ? ' fe-recruit-queue-scroll' : ''}`}
+                    >
+                      {recruitQueueColRight.length === 0 ? (
+                        <p className="fe-muted fe-recruit-queue-empty">Продолжение очереди</p>
+                      ) : (
+                        recruitQueueColRight.map(renderRecruitQueueRow)
                       )}
                     </div>
                   </div>
@@ -1282,7 +1320,7 @@ export function ProvinceMap({
                     </p>
                   ) : (
                     <p className="fe-muted" style={{ margin: 0, fontSize: '0.84rem' }}>
-                      Клик по типу добавляет слот в очередь справа.
+                      Клик по типу добавляет слот в очередь (сначала средняя колонка, затем правая).
                     </p>
                   )}
                   <p style={{ margin: 0, fontSize: '0.84rem' }} className="fe-muted">

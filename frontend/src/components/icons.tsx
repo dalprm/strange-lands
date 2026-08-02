@@ -44,6 +44,31 @@ export function BarrackGlyph({ size, tile }: GlyphProps) {
   );
 }
 
+/** Перекрёстные мечи — claim-pending / гарнизон в пути. */
+export function CrossedSwordsGlyph({ size, tile }: GlyphProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 100 100"
+      width={size}
+      height={size}
+      aria-hidden
+      style={{ display: 'block', flexShrink: 0, ...(tile ? tileFilter : {}) }}
+    >
+      <g stroke="#c9a227" strokeWidth={5} strokeLinecap="round" fill="none">
+        <path d="M22 78 L78 22" />
+        <path d="M78 78 L22 22" />
+      </g>
+      <g fill="#f3e6c8" stroke="#1a1208" strokeWidth={1.2}>
+        <circle cx="22" cy="78" r="5" />
+        <circle cx="78" cy="78" r="5" />
+        <rect x="74" y="16" width="10" height="14" rx="1" transform="rotate(45 79 23)" />
+        <rect x="16" y="16" width="10" height="14" rx="1" transform="rotate(-45 21 23)" />
+      </g>
+    </svg>
+  );
+}
+
 export function BarrackGlyphTileWithCount({ count, size }: { count: number; size: number }) {
   return (
     <span className="fe-tile-text" style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }} aria-label={`Казарм: ${count}`}>

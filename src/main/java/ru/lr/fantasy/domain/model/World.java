@@ -121,12 +121,26 @@ public class World {
     public void warriorsMoveIn(Land toLand, Player player, Warrior... warriors) {
         if (toLand.hasPlayer() && toLand.getPlayer().equals(player)) {
             toLand.addWarriors(warriors);
+            toLand.setClaimPending(false);
         } else if (toLand.hasPlayer() && !toLand.getPlayer().equals(player)) {
             battle(toLand, player, warriors);
         } else {
             assignLandOwner(toLand, player);
             toLand.addWarriors(warriors);
+            toLand.setClaimPending(false);
         }
+    }
+
+    /**
+     * Приказ хода на нейтраль: сразу назначить владельца и флаг «гарнизон в пути».
+     * Подкрепления на уже свою землю флаг не трогают.
+     */
+    public void claimNeutralOnMarchOrder(Land toLand, Player owner) {
+        if (toLand == null || owner == null || toLand.hasPlayer()) {
+            return;
+        }
+        assignLandOwner(toLand, owner);
+        toLand.setClaimPending(true);
     }
 
     public void warriorsMoveOut(Land fromLand, Warrior... warriors) {
@@ -136,6 +150,9 @@ public class World {
     public void buildBuilding(Land land, Building building) {
         if (!land.hasPlayer()) {
             throw new IllegalStateException("Нельзя строить на земле без владельца");
+        }
+        if (land.isClaimPending()) {
+            throw new IllegalStateException("Нельзя строить: гарнизон ещё в пути");
         }
         long cost = EconomyRules.goldCostForBuilding(building);
         EconomyRules.spendGold(this, land.getPlayer().getId(), cost);
@@ -164,15 +181,18 @@ public class World {
         }
     }
 
-    /** Смена владельца земли: отменяет pending-наймы этой земли. */
+    /** Смена владельца земли: сбрасывает claim-pending и отменяет pending-наймы этой земли. */
     public void assignLandOwner(Land land, Player newOwner) {
         Player previous = land.getPlayer();
         boolean changing =
                 (previous == null) != (newOwner == null)
                         || (previous != null && newOwner != null && !previous.equals(newOwner));
         land.setPlayer(newOwner);
-        if (changing && turn != null) {
-            turn.cancelPendingRecruitsForLand(land);
+        if (changing) {
+            land.setClaimPending(false);
+            if (turn != null) {
+                turn.cancelPendingRecruitsForLand(land);
+            }
         }
     }
 

@@ -21,6 +21,8 @@ public class Land implements Comparable<Land> {
     private List<Warrior> warriors = new ArrayList<>();
     private List<WarriorType> accessBuildWarriorTypes = new ArrayList<>();
     private List<Land> neighboring = new ArrayList<>();
+    /** Владелец уже назначен приказом на нейтраль, гарнизон ещё в пути. */
+    private boolean claimPending;
 
     public Land() {
         this.buildings = new Buildings();
@@ -108,6 +110,14 @@ public class Land implements Comparable<Land> {
 
     public boolean hasPlayer() {
         return player != null;
+    }
+
+    public boolean isClaimPending() {
+        return claimPending;
+    }
+
+    public void setClaimPending(boolean claimPending) {
+        this.claimPending = claimPending;
     }
 
     public void addWarriors(Warrior... addWarriors) {
