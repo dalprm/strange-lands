@@ -24,13 +24,14 @@ public class WorldFactoryTest {
         assertEquals(1, world.getPlayerLands(dragon).size());
         assertTrue(world.findPlayerWorldResources(1L).isPresent());
         assertTrue(world.findPlayerWorldResources(2L).isPresent());
-        assertEquals(0, world.findPlayerWorldResources(1L).orElseThrow().getGold());
+        assertEquals(EconomyRules.STARTING_GOLD, world.findPlayerWorldResources(1L).orElseThrow().getGold());
+        assertEquals(EconomyRules.STARTING_GOLD, world.findPlayerWorldResources(2L).orElseThrow().getGold());
         assertStartingCapital(world.getPlayerLands(dal).get(0).getBuildings());
         assertStartingCapital(world.getPlayerLands(dragon).get(0).getBuildings());
         for (Land land : world.getLands()) {
             assertTrue(land.getAccessBuildWarriorTypes().contains(WarriorType.FIGHTER));
             assertTrue(land.getAccessBuildWarriorTypes().contains(WarriorType.CATAPULT));
-            assertTrue(land.getAccessBuildWarriorTypes().contains(WarriorType.BALISTA));
+            assertTrue(land.getAccessBuildWarriorTypes().contains(WarriorType.BALLISTA));
             assertTrue(land.getAccessBuildWarriorTypes().contains(WarriorType.TARAN));
         }
     }

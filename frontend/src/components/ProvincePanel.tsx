@@ -4,6 +4,7 @@ import {
   empireSlotForPlayer,
   orderedEmpirePlayerIds,
 } from '../land/heraldry';
+import { goldCostForBuild } from '../land/economy';
 import {
   availableBuildActions,
   buildingSummaryLines,
@@ -108,7 +109,7 @@ export function ProvincePanel({
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
         {hasCastle && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem' }}>
-            <CastleGlyph size={28} /> Замок
+            <CastleGlyph size={28} /> Ратуша
           </span>
         )}
         {barrackCount > 0 && (
@@ -185,7 +186,7 @@ export function ProvincePanel({
                       disabled={busy}
                       onClick={() => onBuild(land.id, b.type, b.wallLevel)}
                     >
-                      {b.label}
+                      {b.label} · {goldCostForBuild(b.type, b.wallLevel)} GP
                     </button>
                   ))
                 )}

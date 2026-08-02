@@ -72,7 +72,7 @@ public class WorldFactory {
                 Land land = new Land(current, generateCosts(), generateName(current));
                 land.addAccessBuildWarriorType(WarriorType.FIGHTER);
                 land.addAccessBuildWarriorType(WarriorType.CATAPULT);
-                land.addAccessBuildWarriorType(WarriorType.BALISTA);
+                land.addAccessBuildWarriorType(WarriorType.BALLISTA);
                 land.addAccessBuildWarriorType(WarriorType.TARAN);
                 if (rollOneIn(15)) {
                     land.addAccessBuildWarriorType(WarriorType.ORC);
@@ -84,10 +84,10 @@ public class WorldFactory {
                     land.addAccessBuildWarriorType(WarriorType.DWARF);
                 }
                 if (rollOneIn(20)) {
-                    land.addAccessBuildWarriorType(WarriorType.S_ELF);
+                    land.addAccessBuildWarriorType(WarriorType.SHADOW_ELF);
                 }
                 if (rollOneIn(10)) {
-                    land.addAccessBuildWarriorType(WarriorType.HALF);
+                    land.addAccessBuildWarriorType(WarriorType.HOBBIT);
                 }
                 completeLands[i][j] = land;
 

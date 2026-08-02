@@ -21,12 +21,12 @@ public final class RecruitRules {
             WarriorType.ORC,
             WarriorType.ELF,
             WarriorType.DWARF,
-            WarriorType.S_ELF,
-            WarriorType.HALF);
+            WarriorType.SHADOW_ELF,
+            WarriorType.HOBBIT);
 
     private static final Set<WarriorType> SIEGE = EnumSet.of(
             WarriorType.CATAPULT,
-            WarriorType.BALISTA,
+            WarriorType.BALLISTA,
             WarriorType.TARAN);
 
     private RecruitRules() {}
@@ -41,9 +41,9 @@ public final class RecruitRules {
 
     public static int turnCountFor(WarriorType type) {
         return switch (type) {
-            case FIGHTER, DWARF, ORC, HALF -> 1;
-            case ELF, S_ELF -> 2;
-            case TARAN, BALISTA -> 3;
+            case FIGHTER, DWARF, ORC, HOBBIT -> 1;
+            case ELF, SHADOW_ELF -> 2;
+            case TARAN, BALLISTA -> 3;
             case CATAPULT, HERO_FIGHTER, HERO_DWARF, HERO_ELF -> 4;
             case CLERIC, MAGIC -> 5;
         };
@@ -72,8 +72,11 @@ public final class RecruitRules {
         return count;
     }
 
+    /** Слотов найма на одну казарму (обычные / осада / герои казарменного пула). */
+    public static final int SLOTS_PER_BARRACK = 3;
+
     public static int barrackSlotCapacity(Buildings buildings) {
-        return buildings.getBarrackCount() * 6;
+        return buildings.getBarrackCount() * SLOTS_PER_BARRACK;
     }
 
     public static int clericSlotCapacity(Buildings buildings) {
@@ -104,8 +107,8 @@ public final class RecruitRules {
                 requireAccess(access, WarriorType.DWARF, type);
             }
             case HERO_ELF -> {
-                if (!access.contains(WarriorType.ELF) && !access.contains(WarriorType.S_ELF)) {
-                    throw new IllegalStateException("Герой-эльф: нужен ELF или S_ELF в доступе земли");
+                if (!access.contains(WarriorType.ELF) && !access.contains(WarriorType.SHADOW_ELF)) {
+                    throw new IllegalStateException("Герой-эльф: нужен ELF или SHADOW_ELF в доступе земли");
                 }
             }
             case CLERIC -> {

@@ -125,7 +125,9 @@ public class LandService implements LandUseCase {
         }
 
         Map<RecruitRules.SlotPool, Integer> extraPending = new EnumMap<>(RecruitRules.SlotPool.class);
+        long totalGold;
         try {
+            totalGold = 0L;
             for (var entry : collapsed.entrySet()) {
                 WarriorType type = entry.getKey();
                 int count = entry.getValue();
@@ -133,7 +135,12 @@ public class LandService implements LandUseCase {
                 int pending = turn.pendingRecruitSlots(land, pool) + extraPending.getOrDefault(pool, 0);
                 RecruitRules.assertCanRecruit(land, type, count, pending);
                 extraPending.merge(pool, RecruitRules.slotsRequired(type, count), Integer::sum);
+                totalGold += EconomyRules.goldCostForRecruit(type, count);
             }
+            if (!land.hasPlayer()) {
+                throw new IllegalStateException("Нельзя нанимать на земле без владельца");
+            }
+            EconomyRules.spendGold(world, land.getPlayer().getId(), totalGold);
         } catch (IllegalStateException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         }
@@ -178,7 +185,8 @@ public class LandService implements LandUseCase {
                     RecruitRules.turnCountFor(type),
                     pool,
                     unitsPerSlot,
-                    maxUnits));
+                    maxUnits,
+                    EconomyRules.goldCostPerRecruitQuantum(type)));
         }
         List<RecruitOptions.PendingSlot> pending = turn.pendingRecruitSlotsDetail(land).stream()
                 .map(p -> new RecruitOptions.PendingSlot(

@@ -78,13 +78,14 @@ public class World {
     }
 
     /**
-     * Гарантирует запись ресурсов для игрока в мире (старт — нули). Без id не добавляет.
+     * Гарантирует запись ресурсов для игрока в мире (старт — {@link EconomyRules#STARTING_GOLD}).
+     * Без id не добавляет.
      */
     public void ensurePlayerWorldResources(Long playerId) {
         if (playerId == null) {
             return;
         }
-        getPlayerWorldResources().putIfAbsent(playerId, PlayerWorldResources.zero());
+        getPlayerWorldResources().putIfAbsent(playerId, PlayerWorldResources.starting());
     }
 
     public Optional<PlayerWorldResources> findPlayerWorldResources(Long playerId) {
@@ -133,6 +134,11 @@ public class World {
     }
 
     public void buildBuilding(Land land, Building building) {
+        if (!land.hasPlayer()) {
+            throw new IllegalStateException("Нельзя строить на земле без владельца");
+        }
+        long cost = EconomyRules.goldCostForBuilding(building);
+        EconomyRules.spendGold(this, land.getPlayer().getId(), cost);
         land.addBuilding(building);
     }
 

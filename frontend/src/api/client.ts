@@ -247,6 +247,8 @@ export type RecruitOptionsDto = {
     slotPool: string;
     unitsPerSlot: number;
     maxUnits: number;
+    /** GP за один квант заказа (пачка 40 / 1 юнит) */
+    goldCost: number;
   }[];
   pending: {
     warriorType: string;

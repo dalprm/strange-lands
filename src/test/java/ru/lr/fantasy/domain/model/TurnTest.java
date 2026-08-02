@@ -15,6 +15,7 @@ public class TurnTest {
     @Test
     public void testTakeWarriorsOneTurn() {
         Player dal = new Player(3, "Dal");
+        dal.setId(3L);
         World world = new WorldFactory(dal).create(4, 4);
 
         Land playerLand = world.getPlayerLands(dal).get(0);
@@ -39,6 +40,7 @@ public class TurnTest {
     @Test
     public void testTakeWarriorsTwoTurn() {
         Player dal = new Player(3, "Dal");
+        dal.setId(3L);
         World world = new WorldFactory(dal).create(4, 4);
 
         Land palyerLand = world.getPlayerLands(dal).get(0);
@@ -69,6 +71,7 @@ public class TurnTest {
     @Test
     public void testTakeWarriorsAndMove() {
         Player dal = new Player(3, "Dal");
+        dal.setId(3L);
         World world = new WorldFactory(dal).create(4, 4);
 
         Land playerLand = world.getPlayerLands(dal).get(0);
@@ -118,6 +121,8 @@ public class TurnTest {
         // столица уже с замком из WorldFactory
         int expectedIncome = land.getCosts();
         turn.doTurn();
-        assertEquals(expectedIncome, world.findPlayerWorldResources(42L).orElseThrow().getGold());
+        assertEquals(
+                EconomyRules.STARTING_GOLD + expectedIncome,
+                world.findPlayerWorldResources(42L).orElseThrow().getGold());
     }
 }

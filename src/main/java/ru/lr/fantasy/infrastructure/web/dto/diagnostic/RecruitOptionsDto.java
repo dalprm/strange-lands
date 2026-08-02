@@ -17,7 +17,8 @@ public record RecruitOptionsDto(
             int turnCount,
             String slotPool,
             int unitsPerSlot,
-            int maxUnits
+            int maxUnits,
+            long goldCost
     ) {}
 
     public record PendingRecruitDto(

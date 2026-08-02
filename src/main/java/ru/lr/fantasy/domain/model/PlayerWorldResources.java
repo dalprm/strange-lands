@@ -36,6 +36,21 @@ public class PlayerWorldResources {
         this.gold = gold;
     }
 
+    /** Стартовая казна нового игрока в мире. */
+    public static PlayerWorldResources starting() {
+        return new PlayerWorldResources(EconomyRules.STARTING_GOLD, 0, 0, 0);
+    }
+
+    public void spendGold(long amount) {
+        if (amount < 0) {
+            throw new IllegalStateException("Сумма списания не может быть отрицательной");
+        }
+        if (gold < amount) {
+            throw new IllegalStateException("Недостаточно золота: нужно " + amount + ", есть " + gold);
+        }
+        gold -= amount;
+    }
+
     public long getArcaneMana() {
         return arcaneMana;
     }

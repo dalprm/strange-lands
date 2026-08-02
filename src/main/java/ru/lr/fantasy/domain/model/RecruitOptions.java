@@ -17,7 +17,9 @@ public record RecruitOptions(
             int turnCount,
             RecruitRules.SlotPool slotPool,
             int unitsPerSlot,
-            int maxUnits
+            int maxUnits,
+            /** Цена одного кванта заказа (пачка 40 обычных / 1 прочий), GP. */
+            long goldCost
     ) {}
 
     public record PendingSlot(

@@ -18,30 +18,29 @@ public class RecruitBatchRulesTest {
         Land land = new Land(1, 100, "1");
         land.addAccessBuildWarriorType(WarriorType.FIGHTER);
         land.addAccessBuildWarriorType(WarriorType.CATAPULT);
-        land.addBuilding(new BarrackBuilding()); // 6 slots
+        land.addBuilding(new BarrackBuilding()); // 3 slots
 
         int pending = 0;
-        RecruitRules.assertCanRecruit(land, WarriorType.FIGHTER, 80, pending); // 2 slots
-        pending += RecruitRules.slotsRequired(WarriorType.FIGHTER, 80);
+        RecruitRules.assertCanRecruit(land, WarriorType.FIGHTER, 40, pending); // 1 slot
+        pending += RecruitRules.slotsRequired(WarriorType.FIGHTER, 40);
         RecruitRules.assertCanRecruit(land, WarriorType.CATAPULT, 2, pending); // +2
         pending += RecruitRules.slotsRequired(WarriorType.CATAPULT, 2);
-        assertEquals(4, pending);
+        assertEquals(3, pending);
     }
 
     @Test
     public void overfillRejectedBeforeAnyQueue() {
-        Player dal = new Player(1, "Dal");
-        dal.setId(1L);
-        World world = new WorldFactory(dal).create(3, 3);
-        Land land = world.getPlayerLands(dal).get(0);
-        // 2 barracks = 12 slots; try 13 catapults worth after filling
+        Land land = new Land(1, 100, "1");
+        land.addAccessBuildWarriorType(WarriorType.CATAPULT);
+        land.addBuilding(new BarrackBuilding()); // 3 slots
+        int cap = RecruitRules.barrackSlotCapacity(land.getBuildings());
+        assertEquals(3, cap);
         try {
-            RecruitRules.assertCanRecruit(land, WarriorType.CATAPULT, 13, 0);
+            RecruitRules.assertCanRecruit(land, WarriorType.CATAPULT, cap + 1, 0);
             fail();
         } catch (IllegalStateException e) {
             assertTrue(e.getMessage().contains("слотов"));
         }
-        assertEquals(0, world.getTurn().pendingRecruitSlots(land, RecruitRules.SlotPool.BARRACK));
     }
 
     @Test

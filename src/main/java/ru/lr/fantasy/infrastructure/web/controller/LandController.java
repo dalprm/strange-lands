@@ -79,7 +79,8 @@ public class LandController {
                         t.turnCount(),
                         t.slotPool().name(),
                         t.unitsPerSlot(),
-                        t.maxUnits()))
+                        t.maxUnits(),
+                        t.goldCost()))
                 .toList();
         List<RecruitOptionsDto.PendingRecruitDto> pending = options.pending().stream()
                 .map(p -> new RecruitOptionsDto.PendingRecruitDto(

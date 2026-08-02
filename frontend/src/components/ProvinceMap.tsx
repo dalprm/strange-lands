@@ -51,8 +51,8 @@ const PROVINCE_TILE_PX = 120;
 const MAP_FRAME_X_PX = 36;
 const MAP_FRAME_TOP_PX = 36;
 const MAP_FRAME_BOTTOM_PX = 44;
-const SHIELD_BANNER_PX = 88;
-/** Почти на всю клетку — чтобы сетка 2-2-2-1 читалась с равным шагом. */
+/** Один размер для «Империя» и «Здания и войска» — почти на всю клетку. */
+const SHIELD_BANNER_PX = 108;
 const SHIELD_CONTENTS_PX = 108;
 const PAN_DRAG_THRESHOLD_PX = 6;
 
@@ -663,7 +663,16 @@ export function ProvinceMap({
   const recruitTypes = recruitOptions?.types ?? [];
   const recruitPending = recruitOptions?.pending ?? [];
   const selectedOpt = recruitTypes.find((t) => t.warriorType === selectedRecruitType) ?? null;
-  const canConfirmRecruit = recruitDraft.length > 0 && !recruitSubmitting;
+  const draftGoldTotal = recruitDraft.reduce((sum, d) => {
+    const opt = recruitTypes.find((t) => t.warriorType === d.warriorType);
+    return sum + (opt?.goldCost ?? 0);
+  }, 0);
+  const playerGold =
+    currentPlayerId != null
+      ? (world?.playerWorldResources?.[String(currentPlayerId)]?.gold ?? 0)
+      : 0;
+  const canConfirmRecruit =
+    recruitDraft.length > 0 && !recruitSubmitting && draftGoldTotal <= playerGold;
   const displayBarrackFree =
     recruitOptions == null ? 0 : Math.max(0, recruitOptions.barrackSlotsFree - draftSlotsInPool('BARRACK'));
   const displayClericFree =
@@ -885,9 +894,12 @@ export function ProvinceMap({
             >
               {lands.map((land, landIndex) => {
                 const pid = land.player?.id ?? null;
+                const isOwnLand = pid != null && currentPlayerId != null && pid === currentPlayerId;
                 const isSelected = selectedLandId === land.id;
                 const isFogged = fogVisibleLandIds != null && !fogVisibleLandIds.has(land.id);
                 const empireSlot = pid != null ? empireSlotForPlayer(pid, empirePlayerIds) : null;
+                /** Режим contents — только земли текущего игрока; видимые чужие щиты всегда «Империя». */
+                const showContents = mapViewMode === 'contents' && isOwnLand;
                 const isMoveSource =
                   moveFlow != null && moveFlow.sourceIds.includes(land.id);
                 const isMoveTarget =
@@ -905,7 +917,7 @@ export function ProvinceMap({
                   ? 'rgba(40, 32, 20, 0.55)'
                   : 'rgba(201, 162, 39, 0.18)';
                 const borderWidth = 1;
-                const shieldSize = mapViewMode === 'contents' ? SHIELD_CONTENTS_PX : SHIELD_BANNER_PX;
+                const shieldSize = showContents ? SHIELD_CONTENTS_PX : SHIELD_BANNER_PX;
                 const ownerLabel = landOwnerLabel(land);
                 const recruitTypesLocal = land.accessBuildWarriorTypes ?? [];
                 const recruitText =
@@ -927,7 +939,7 @@ export function ProvinceMap({
                   swamp: 'низменность',
                 };
                 const buildingBits: string[] = [];
-                if (hasCastle) buildingBits.push('замок');
+                if (hasCastle) buildingBits.push('ратуша');
                 if (barrackCount > 0) buildingBits.push(`казармы ×${barrackCount}`);
                 if (hasWall) buildingBits.push('стена');
                 const tipTitle = isFogged
@@ -999,7 +1011,7 @@ export function ProvinceMap({
                             opacity: shieldFocus != null ? 1 : 0.92,
                           }}
                         >
-                          {pid != null && mapViewMode === 'contents' ? (
+                          {pid != null && showContents ? (
                             <ContentsShield
                               land={land}
                               size={SHIELD_CONTENTS_PX}
@@ -1192,7 +1204,7 @@ export function ProvinceMap({
                               </span>
                             ) : (
                               <span className="fe-muted" style={{ fontSize: '0.72rem' }}>
-                                +{opt.unitsPerSlot}
+                                +{opt.unitsPerSlot} · {opt.goldCost} GP
                               </span>
                             )}
                           </button>
@@ -1243,6 +1255,8 @@ export function ProvinceMap({
                               </span>
                               <span className="fe-muted">
                                 {d.turnCount === 1 ? 'через 1 ход' : `через ${d.turnCount} хода`} · новый
+                                {' · '}
+                                {recruitTypes.find((t) => t.warriorType === d.warriorType)?.goldCost ?? '?'} GP
                               </span>
                             </button>
                           ))}
@@ -1262,6 +1276,8 @@ export function ProvinceMap({
                         {' · '}
                         свободно слотов {freeSlotsForPool(selectedOpt.slotPool)}
                         {' · '}за клик {selectedOpt.unitsPerSlot}
+                        {' · '}
+                        {selectedOpt.goldCost} GP
                       </span>
                     </p>
                   ) : (
@@ -1269,6 +1285,14 @@ export function ProvinceMap({
                       Клик по типу добавляет слот в очередь справа.
                     </p>
                   )}
+                  <p style={{ margin: 0, fontSize: '0.84rem' }} className="fe-muted">
+                    Черновик: <strong style={{ color: 'var(--fe-ink)' }}>{draftGoldTotal} GP</strong>
+                    {' · '}
+                    казна: {playerGold} GP
+                    {recruitDraft.length > 0 && draftGoldTotal > playerGold ? (
+                      <span style={{ color: 'var(--fe-danger)' }}> — недостаточно золота</span>
+                    ) : null}
+                  </p>
                   <button
                     type="button"
                     className="fe-btn fe-btn-ok"

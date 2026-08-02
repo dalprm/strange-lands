@@ -5,10 +5,10 @@ export const WARRIOR_TYPE_LABEL: Record<string, string> = {
   ORC: 'Орк',
   ELF: 'Эльф',
   DWARF: 'Гном',
-  S_ELF: 'Эльф (S)',
-  HALF: 'Хоббит',
+  SHADOW_ELF: 'Тёмный эльф',
+  HOBBIT: 'Хоббит',
   CATAPULT: 'Катапульта',
-  BALISTA: 'Баллиста',
+  BALLISTA: 'Баллиста',
   TARAN: 'Таран',
   HERO_FIGHTER: 'Герой-боец',
   HERO_DWARF: 'Герой-гном',
@@ -61,7 +61,7 @@ export function landCanBuildMoreCountable(b: BuildingsDto | null | undefined): b
 export function availableBuildActions(b: BuildingsDto | null | undefined): BuildActionOption[] {
   const out: BuildActionOption[] = [];
   if (!landHasCastle(b)) {
-    out.push({ type: 'CASTLE', label: 'Замок' });
+    out.push({ type: 'CASTLE', label: 'Ратуша' });
   }
   if (landCanBuildMoreCountable(b)) {
     out.push({ type: 'BARRACK', label: 'Казарма' });
@@ -82,7 +82,7 @@ export function availableBuildActions(b: BuildingsDto | null | undefined): Build
 
 /** Подписи типов построек (DM / логи). */
 export const BUILDING_TYPE_LABEL: Record<string, string> = {
-  CASTLE: 'Замок',
+  CASTLE: 'Ратуша',
   BARRACK: 'Казарма',
   WALL: 'Стена',
   MAGIC_CASTLE: 'Магический замок',
@@ -91,7 +91,7 @@ export const BUILDING_TYPE_LABEL: Record<string, string> = {
 
 /** @deprecated используйте availableBuildActions / BUILDING_TYPE_LABEL */
 export const BUILDING_TYPES = [
-  { type: 'CASTLE', label: 'Замок' },
+  { type: 'CASTLE', label: 'Ратуша' },
   { type: 'BARRACK', label: 'Казарма' },
   { type: 'WALL', label: 'Стена', wallLevel: 0 },
   { type: 'MAGIC_CASTLE', label: 'Магический замок' },
@@ -151,7 +151,7 @@ export function landBarrackCount(b: BuildingsDto | null | undefined): number {
 export function buildingSummaryLines(b: BuildingsDto | null | undefined): string[] {
   if (b == null) return [];
   const lines: string[] = [];
-  if (landHasCastle(b)) lines.push('Замок');
+  if (landHasCastle(b)) lines.push('Ратуша');
   const barr = b.barrackCount ?? 0;
   if (barr > 0) lines.push(`Казармы ×${barr}`);
   const magic = b.magicCastleCount ?? 0;
@@ -189,6 +189,7 @@ export function playerLandBackgroundFromId(playerId: number): string {
   return `hsl(${h} ${s}% ${l}%)`;
 }
 
+/** Видимы: земли текущего игрока + их соседи. Чужие вне этого — туман. */
 export function computeFogOfWarVisibleLandIds(
   lands: LandDto[],
   neighbors: Record<string, number[]> | undefined,

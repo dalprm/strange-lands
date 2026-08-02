@@ -1,14 +1,14 @@
 package ru.lr.fantasy.domain.model;
 
 public enum WarriorType {
-    FIGHTER("Человек", false, 1),
-    ORC("Орк", false, 2),
-    ELF("Эльф", false, 3),
-    DWARF("Гном", false, 4),
-    S_ELF("Эльф (S)", false, 5),
-    HALF("Хоббит", false, 6),
+    FIGHTER("Fighter", false, 1),
+    ORC("Orc", false, 2),
+    ELF("Elf", false, 3),
+    DWARF("Dwarf", false, 4),
+    SHADOW_ELF("Shadow Elf", false, 5),
+    HOBBIT("Hobbit", false, 6),
     CATAPULT("Catapult", false, 7),
-    BALISTA("Balista", false, 8),
+    BALLISTA("Ballista", false, 8),
     TARAN("Taran", false, 9),
     HERO_FIGHTER("Hero fighter", true, 10),
     HERO_DWARF("Hero dwarf", true, 11),

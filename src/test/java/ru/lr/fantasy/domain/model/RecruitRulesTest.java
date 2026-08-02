@@ -59,16 +59,30 @@ public class RecruitRulesTest {
     }
 
     @Test
-    public void pendingSlotsReduceCapacity() {
+    public void oneBarrackGivesThreeSlots() {
         Land land = landWithBarrackAndFighter();
-        // 1 barrack = 6 slots; 5 pending → 1 free → max 40 fighters
+        assertEquals(3, RecruitRules.barrackSlotCapacity(land.getBuildings()));
+        assertEquals(RecruitRules.SLOTS_PER_BARRACK, 3);
+        RecruitRules.assertCanRecruit(land, WarriorType.FIGHTER, 120, 0); // 3 slots
         try {
-            RecruitRules.assertCanRecruit(land, WarriorType.FIGHTER, 80, 5);
+            RecruitRules.assertCanRecruit(land, WarriorType.FIGHTER, 160, 0);
             fail();
         } catch (IllegalStateException e) {
             assertTrue(e.getMessage().contains("слотов"));
         }
-        RecruitRules.assertCanRecruit(land, WarriorType.FIGHTER, 40, 5);
+    }
+
+    @Test
+    public void pendingSlotsReduceCapacity() {
+        Land land = landWithBarrackAndFighter();
+        // 1 barrack = 3 slots; 2 pending → 1 free → max 40 fighters
+        try {
+            RecruitRules.assertCanRecruit(land, WarriorType.FIGHTER, 80, 2);
+            fail();
+        } catch (IllegalStateException e) {
+            assertTrue(e.getMessage().contains("слотов"));
+        }
+        RecruitRules.assertCanRecruit(land, WarriorType.FIGHTER, 40, 2);
     }
 
     @Test
