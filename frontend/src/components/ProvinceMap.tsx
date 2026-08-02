@@ -19,6 +19,7 @@ import {
   computeFogOfWarVisibleLandIds,
   landBarrackCount,
   landHasCastle,
+  landPotentialIncome,
   landTurnIncome,
   landHasWall,
   landOwnerLabel,
@@ -1028,7 +1029,7 @@ export function ProvinceMap({
                         ? 'Гарнизон в пути'
                         : hasCastle
                           ? `Доход ${landTurnIncome(land)}`
-                          : 'Доход 0 (нужна Ратуша)',
+                          : `Потенциал ${landPotentialIncome(land)} (нужна Ратуша)`,
                       land.claimPending ? null : `Найм: ${recruitText}`,
                       buildingBits.length > 0 ? `Здания: ${buildingBits.join(', ')}` : null,
                       sampleTerrain != null

@@ -127,10 +127,15 @@ export function landHasCastle(b: BuildingsDto | null | undefined): boolean {
   );
 }
 
-/** Доход конца хода: только земли с Ратушей (как {@code World.collectCastleIncomeGoldForPlayer}). */
+/** Базовый доход провинции (после постройки Ратуши) — поле {@code costs} с бэкенда. */
+export function landPotentialIncome(land: { costs?: number }): number {
+  return land.costs ?? 0;
+}
+
+/** Фактический доход конца хода: только земли с Ратушей (как {@code World.collectCastleIncomeGoldForPlayer}). */
 export function landTurnIncome(land: { costs?: number; buildings?: BuildingsDto | null }): number {
   if (!landHasCastle(land.buildings)) return 0;
-  return land.costs ?? 0;
+  return landPotentialIncome(land);
 }
 
 export function landHasWall(b: BuildingsDto | null | undefined): boolean {

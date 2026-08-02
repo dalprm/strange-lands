@@ -11,6 +11,7 @@ import {
   formatWarriorLine,
   landBarrackCount,
   landHasCastle,
+  landPotentialIncome,
   landTurnIncome,
   landHasWall,
   landOwnerLabel,
@@ -132,9 +133,9 @@ export function ProvincePanel({
             Доход
           </dt>
           <dd style={{ margin: 0 }}>
-            {landTurnIncome(land)}
+            {hasCastle ? landTurnIncome(land) : landPotentialIncome(land)}
             {!hasCastle ? (
-              <span className="fe-muted"> (нужна Ратуша)</span>
+              <span className="fe-muted"> (потенциал, нужна Ратуша)</span>
             ) : null}
           </dd>
         </div>
